@@ -30,6 +30,8 @@ public sealed class MainMenuController : MonoBehaviour
         BindButton("Tank Mode Card/Enter Mode", tankScene);
         BindButton("Car Mode Card", carScene);
         BindButton("Car Mode Card/Enter Mode", carScene);
+        EnsureFrontButtonOverlay("Tank Mode Card", tankScene);
+        EnsureFrontButtonOverlay("Car Mode Card", carScene);
         EnsureEventSystem();
     }
 
@@ -65,6 +67,45 @@ public sealed class MainMenuController : MonoBehaviour
         if (button == null) return;
         button.onClick.RemoveAllListeners();
         button.onClick.AddListener(() => Load(scene));
+    }
+
+    private void EnsureFrontButtonOverlay(string cardPath, string scene)
+    {
+        Transform card = transform.Find("Main Menu Canvas/" + cardPath);
+        if (card == null) return;
+        Transform overlayTransform = card.Find("Mode Click Overlay");
+        Button overlay;
+        if (overlayTransform == null)
+        {
+            GameObject overlayObject = new GameObject("Mode Click Overlay", typeof(RectTransform), typeof(Image), typeof(Button));
+            overlayObject.transform.SetParent(card, false);
+            RectTransform rect = overlayObject.GetComponent<RectTransform>();
+            rect.anchorMin = Vector2.zero;
+            rect.anchorMax = Vector2.one;
+            rect.offsetMin = Vector2.zero;
+            rect.offsetMax = Vector2.zero;
+            Image image = overlayObject.GetComponent<Image>();
+            image.color = new Color(0.05f, 0.75f, 0.72f, 0f);
+            image.raycastTarget = true;
+            overlay = overlayObject.GetComponent<Button>();
+            overlay.targetGraphic = image;
+            ColorBlock colors = overlay.colors;
+            colors.normalColor = Color.white;
+            colors.highlightedColor = new Color(1f, 1f, 1f, 0.12f);
+            colors.pressedColor = new Color(1f, 1f, 1f, 0.24f);
+            colors.selectedColor = new Color(1f, 1f, 1f, 0.12f);
+            overlay.colors = colors;
+            Navigation navigation = overlay.navigation;
+            navigation.mode = Navigation.Mode.None;
+            overlay.navigation = navigation;
+        }
+        else overlay = overlayTransform.GetComponent<Button>();
+
+        if (overlay == null) return;
+        overlay.interactable = true;
+        overlay.onClick.RemoveAllListeners();
+        overlay.onClick.AddListener(() => Load(scene));
+        overlay.transform.SetAsLastSibling();
     }
 
     private void EnsureEventSystem()
@@ -114,6 +155,8 @@ public sealed class MainMenuController : MonoBehaviour
             if (existing.Find("Tank Mode Card") != null && existing.Find("Car Mode Card") != null)
             {
                 canvas = existing.GetComponent<Canvas>();
+                RectTransform canvasRect = existing.GetComponent<RectTransform>();
+                if (canvasRect != null) canvasRect.localScale = Vector3.one;
                 return;
             }
             if (Application.isPlaying) Destroy(existing.gameObject);
