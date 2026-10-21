@@ -80,7 +80,7 @@ En el modo directo, los rivales usan `FollowWP` para seguir la lista ordenada. E
 
 ### 4.5 Panel de navegacion
 
-El selector dedicado muestra dos tarjetas: `Modo tanques` y `Carrera de autos`. Cada circuito contiene un HUD compacto con controles, velocidad durante la carrera, selector de modo waypoint/tracker, camara de seguimiento o vista general, botones de cambio de escena y retorno al selector. Los botones se enlazan al inicio de Play, se crea el EventSystem con `InputSystemUIInputModule` y la interfaz utiliza la fuente `LegacyRuntime.ttf` compatible con Unity 6. Esta ultima corrige la excepcion que detenia la generacion de textos y dejaba vacia la mayor parte del panel.
+El selector dedicado cubre todo el Game View y reajusta cabecera, tarjetas y botones al cambiar la resolucion, incluidas vistas panoramicas. Sus dos opciones cargan `TankRacing` o `CarCircuit`. En ambas escenas el HUD ofrece pausa con Escape, continuar, cambiar de modo y salir. En tanques indica los cuatro agentes y nueve waypoints, y permite recorrer la camara entre `BlueTank`, `RedTank`, `YellowTank` y `GreenTank`. En la carrera muestra velocidad, control de camara y selector waypoint/tracker. Los eventos se enlazan al iniciar Play mediante `InputSystemUIInputModule`. El coche no consulta `UnityEngine.Input`, lo que evita la excepcion en el proyecto configurado para usar unicamente Input System.
 
 El proyecto incorpora el paquete Unity Input System y configura el manejo de entrada nuevo para la interfaz. La advertencia deprecada del Input Manager mostrada en la captura se aborda con esa migracion; el paquete debe terminar de resolverse y el Editor puede pedir un reinicio para aplicar el cambio.
 

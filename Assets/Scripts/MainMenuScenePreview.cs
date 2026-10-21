@@ -14,7 +14,10 @@ public static class MainMenuScenePreview
     {
         if (EditorApplication.isPlayingOrWillChangePlaymode || EditorApplication.isCompiling || EditorApplication.isUpdating)
             return;
-        if (AssetDatabase.LoadAssetAtPath<SceneAsset>(ScenePath) == null) return;
+        SceneAsset menuAsset = AssetDatabase.LoadAssetAtPath<SceneAsset>(ScenePath);
+        if (menuAsset == null) return;
+        // Pressing Play from CarCircuit or TankRacing should still start at the mode selector.
+        EditorSceneManager.playModeStartScene = menuAsset;
         for (int i = 0; i < EditorSceneManager.sceneCount; i++)
         {
             var scene = EditorSceneManager.GetSceneAt(i);

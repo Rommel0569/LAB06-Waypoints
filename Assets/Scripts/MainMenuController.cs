@@ -11,6 +11,8 @@ public sealed class MainMenuController : MonoBehaviour
     [SerializeField] private string tankScene = "TankRacing";
     [SerializeField] private string carScene = "CarCircuit";
     private Canvas canvas;
+    private int lastWidth;
+    private int lastHeight;
 
     private void OnEnable()
     {
@@ -21,9 +23,16 @@ public sealed class MainMenuController : MonoBehaviour
     {
         if (!Application.isPlaying) return;
         BuildMenu();
+        ApplyResponsiveLayout();
         BindButton("Tank Mode Card/Enter Mode", tankScene);
         BindButton("Car Mode Card/Enter Mode", carScene);
         EnsureEventSystem();
+    }
+
+    private void Update()
+    {
+        if (!Application.isPlaying || (lastWidth == Screen.width && lastHeight == Screen.height)) return;
+        ApplyResponsiveLayout();
     }
 
     private void BindButton(string path, string scene)
@@ -102,6 +111,116 @@ public sealed class MainMenuController : MonoBehaviour
             80, 630, 570, 27, 11, FontStyle.Bold, new Color(0.54f, 0.66f, 0.71f), TextAnchor.MiddleLeft);
         CreateText(canvasObject.transform, "Version Footer", "UNITY 6000.3.17f1      /      WASD PARA CONDUCIR",
             650, 630, 550, 27, 11, FontStyle.Bold, new Color(0.54f, 0.66f, 0.71f), TextAnchor.MiddleRight);
+        ApplyResponsiveLayout();
+    }
+
+    /// <summary>Keeps the complete selector visible and fills the Game view, including panoramic layouts.</summary>
+    private void ApplyResponsiveLayout()
+    {
+        if (canvas == null) return;
+        Canvas.ForceUpdateCanvases();
+        RectTransform root = canvas.GetComponent<RectTransform>();
+        float width = root.rect.width;
+        float height = root.rect.height;
+        if (width < 1f || height < 1f) return;
+        lastWidth = Screen.width;
+        lastHeight = Screen.height;
+
+        SetTopLeft(canvas.transform, "Top Accent", 0f, 0f, width, 5f);
+        SetTopLeft(canvas.transform, "Header Bar", 0f, 5f, width, 62f);
+        SetTopLeft(canvas.transform, "Game Category", width - 580f, 16f, 500f, 36f);
+        SetTopLeft(canvas.transform, "Edition Tag", 80f, 74f, width - 160f, 24f);
+        bool compact = height < 560f;
+        float titleY = compact ? 96f : 125f;
+        float titleHeight = compact ? 58f : 125f;
+        SetTopLeft(canvas.transform, "Hero Title", 77f, titleY, Mathf.Min(510f, width * 0.46f), titleHeight);
+        SetTopLeft(canvas.transform, "Hero Copy", width * 0.47f, compact ? titleY + 6f : 166f,
+            width * 0.47f - 70f, compact ? 44f : 52f);
+        Text title = FindText(transform, "Main Menu Canvas/Hero Title");
+        if (title != null) title.fontSize = compact ? 34 : 48;
+        Text copy = FindText(transform, "Main Menu Canvas/Hero Copy");
+        if (copy != null) copy.fontSize = compact ? 15 : 19;
+
+        float margin = Mathf.Clamp(width * 0.06f, 26f, 82f);
+        float gap = Mathf.Clamp(width * 0.035f, 24f, 48f);
+        float cardWidth = (width - margin * 2f - gap) * 0.5f;
+        float cardTop = Mathf.Clamp(height * 0.42f, compact ? 158f : 245f, 290f);
+        float cardHeight = Mathf.Clamp(height - cardTop - 55f, 155f, 285f);
+        ResizeCard("Tank Mode Card", margin, cardTop, cardWidth, cardHeight, compact);
+        ResizeCard("Car Mode Card", margin + cardWidth + gap, cardTop, cardWidth, cardHeight, compact);
+
+        SetTopLeft(canvas.transform, "Footer Divider", margin, height - 52f, width - margin * 2f, 1f);
+        SetTopLeft(canvas.transform, "Lab Footer", margin, height - 38f, width * 0.46f, 26f);
+        SetTopLeft(canvas.transform, "Version Footer", width * 0.53f, height - 38f, width * 0.41f, 26f);
+    }
+
+    private void ResizeCard(string name, float x, float y, float width, float height, bool compact)
+    {
+        Transform card = transform.Find("Main Menu Canvas/" + name);
+        if (card == null) return;
+        RectTransform cardRect = card.GetComponent<RectTransform>();
+        cardRect.anchorMin = cardRect.anchorMax = new Vector2(0f, 1f);
+        cardRect.pivot = new Vector2(0f, 1f);
+        cardRect.anchoredPosition = new Vector2(x, -y);
+        cardRect.sizeDelta = new Vector2(width, height);
+
+        SetTopLeft(card, "Mode Title", 27f, 17f, width - 54f, 38f);
+        SetTopLeft(card, "Title Divider", 27f, 62f, width - 54f, 1f);
+        Text description = FindText(card, "Mode Description");
+        if (description != null && compact && height < 200f)
+        {
+            description.text = name.Contains("Tank") ? "4 TANQUES  ·  9 WAYPOINTS" : "WASD  ·  3 RIVALES";
+            description.fontSize = 12;
+            SetTopLeft(card, "Mode Description", 27f, 72f, width - 54f, 24f);
+        }
+        else
+        {
+            if (description != null)
+            {
+                description.text = name.Contains("Tank")
+                    ? "Nueve puntos de ruta · cuatro tanques\nIA en circuito cerrado · cambia velocidad y giro"
+                    : "Quince puntos de carrera · cuatro autos\nWASD o flechas para conducir y completar vueltas";
+                description.fontSize = compact ? 13 : 15;
+            }
+            SetTopLeft(card, "Mode Description", compact ? 27f : 165f, compact ? 72f : 84f,
+                width - (compact ? 54f : 190f), Mathf.Max(36f, height - (compact ? 145f : 172f)));
+        }
+        string[] vehicleElements = { "Vehicle Shadow", "Vehicle Chassis", "Vehicle Cabin", "Vehicle Turret",
+            "Vehicle Barrel", "Vehicle Track", "Vehicle Wheel Left", "Vehicle Wheel Right", "Vehicle Wing", "Vehicle Number" };
+        bool showVehicle = !compact && height >= 225f;
+        for (int i = 0; i < vehicleElements.Length; i++)
+        {
+            Transform element = card.Find(vehicleElements[i]);
+            if (element != null) element.gameObject.SetActive(showVehicle);
+        }
+        Transform button = card.Find("Enter Mode");
+        if (button != null)
+        {
+            RectTransform buttonRect = button.GetComponent<RectTransform>();
+            buttonRect.anchoredPosition = new Vector2(27f, -(height - (compact && height < 200f ? 55f : 61f)));
+            buttonRect.sizeDelta = new Vector2(width - 54f, 46f);
+            RectTransform label = button.Find("Button Label").GetComponent<RectTransform>();
+            label.offsetMin = Vector2.zero;
+            label.offsetMax = Vector2.zero;
+        }
+    }
+
+    private static void SetTopLeft(Transform parent, string name, float x, float y, float width, float height)
+    {
+        Transform item = parent.Find(name);
+        if (item == null) return;
+        RectTransform rect = item.GetComponent<RectTransform>();
+        if (rect == null) return;
+        rect.anchorMin = rect.anchorMax = new Vector2(0f, 1f);
+        rect.pivot = new Vector2(0f, 1f);
+        rect.anchoredPosition = new Vector2(x, -y);
+        rect.sizeDelta = new Vector2(width, height);
+    }
+
+    private static Text FindText(Transform parent, string path)
+    {
+        Transform item = parent.Find(path);
+        return item == null ? null : item.GetComponent<Text>();
     }
 
     private void Load(string scene)

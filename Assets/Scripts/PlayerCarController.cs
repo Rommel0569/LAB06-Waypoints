@@ -57,21 +57,27 @@ public sealed class PlayerCarController : MonoBehaviour
     {
 #if ENABLE_INPUT_SYSTEM
         UnityEngine.InputSystem.Keyboard keyboard = UnityEngine.InputSystem.Keyboard.current;
-        if (keyboard != null)
+        if (keyboard == null)
         {
-            float forward = (keyboard.wKey.isPressed || keyboard.upArrowKey.isPressed ? 1f : 0f) -
-                            (keyboard.sKey.isPressed || keyboard.downArrowKey.isPressed ? 1f : 0f);
-            float turn = (keyboard.dKey.isPressed || keyboard.rightArrowKey.isPressed ? 1f : 0f) -
-                         (keyboard.aKey.isPressed || keyboard.leftArrowKey.isPressed ? 1f : 0f);
-            throttleInput = forward;
-            steeringInput = turn;
-            handbrake = keyboard.spaceKey.isPressed;
+            throttleInput = 0f;
+            steeringInput = 0f;
+            handbrake = false;
             return;
         }
+        float forward = (keyboard.wKey.isPressed || keyboard.upArrowKey.isPressed ? 1f : 0f) -
+                        (keyboard.sKey.isPressed || keyboard.downArrowKey.isPressed ? 1f : 0f);
+        float turn = (keyboard.dKey.isPressed || keyboard.rightArrowKey.isPressed ? 1f : 0f) -
+                     (keyboard.aKey.isPressed || keyboard.leftArrowKey.isPressed ? 1f : 0f);
+        throttleInput = forward;
+        steeringInput = turn;
+        handbrake = keyboard.spaceKey.isPressed;
+#else
+        // This project uses the Input System package exclusively (Project Settings > Player).
+        // Do not fall back to UnityEngine.Input: that throws in Input System-only projects.
+        throttleInput = 0f;
+        steeringInput = 0f;
+        handbrake = false;
 #endif
-        throttleInput = Input.GetAxisRaw("Vertical");
-        steeringInput = Input.GetAxisRaw("Horizontal");
-        handbrake = Input.GetKey(KeyCode.Space);
     }
 
     private void FixedUpdate()
