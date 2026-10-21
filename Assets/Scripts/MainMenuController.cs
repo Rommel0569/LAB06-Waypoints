@@ -305,6 +305,10 @@ public sealed class MainMenuController : MonoBehaviour
         SceneManager.LoadScene(scene, LoadSceneMode.Single);
     }
 
+    // Persistent Unity UI button callbacks are installed by MainMenuScenePreview.
+    public void LoadTankMode() { Load(tankScene); }
+    public void LoadCarMode() { Load(carScene); }
+
     private static void CreateCard(Transform parent, string name, string title, string description,
         Vector2 position, Color color, string action, UnityEngine.Events.UnityAction callback)
     {
