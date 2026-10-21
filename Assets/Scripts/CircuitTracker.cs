@@ -12,6 +12,14 @@ public sealed class CircuitTracker : MonoBehaviour
 
     public Vector3 TargetPosition { get; private set; }
 
+    public void Configure(WaypointCircuit route, float trackerSpeed = 10f, float ahead = 3f)
+    {
+        circuit = route;
+        speed = Mathf.Max(0.1f, trackerSpeed);
+        lookAhead = Mathf.Max(0.1f, ahead);
+        RebuildSamples();
+    }
+
     private void Awake() => RebuildSamples();
 
     private void Update()
@@ -26,7 +34,7 @@ public sealed class CircuitTracker : MonoBehaviour
 
     private void RebuildSamples()
     {
-        if (circuit == null) circuit = FindObjectOfType<WaypointCircuit>();
+        if (circuit == null) circuit = FindFirstObjectByType<WaypointCircuit>();
         if (circuit == null) return;
         Transform[] points = circuit.Waypoints;
         if (points.Length < 2) return;

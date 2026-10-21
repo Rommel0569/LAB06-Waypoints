@@ -8,9 +8,16 @@ public sealed class FollowTracker : MonoBehaviour
     [SerializeField, Min(0f)] private float followDistance = 2.5f;
     [SerializeField, Min(1f)] private float turnSpeed = 120f;
 
+    public void Configure(CircuitTracker target, float followSpeed = 9f, float distance = 2.5f)
+    {
+        tracker = target;
+        speed = Mathf.Max(0.1f, followSpeed);
+        followDistance = Mathf.Max(0f, distance);
+    }
+
     private void Start()
     {
-        if (tracker == null) tracker = FindObjectOfType<CircuitTracker>();
+        if (tracker == null) tracker = FindFirstObjectByType<CircuitTracker>();
         if (tracker == null) Debug.LogError($"{name}: falta asignar el CircuitTracker.", this);
     }
 

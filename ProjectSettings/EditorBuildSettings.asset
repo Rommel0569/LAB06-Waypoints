@@ -8,4 +8,7 @@ EditorBuildSettings:
   - enabled: 1
     path: Assets/Scenes/TankRacing.unity
     guid: 19c4146ff7514b5ebf0a97d04666b940
+  - enabled: 1
+    path: Assets/Scenes/CarCircuit.unity
+    guid: 87e451571e85423c86f691fcce0ee234
   m_configObjects: {}
