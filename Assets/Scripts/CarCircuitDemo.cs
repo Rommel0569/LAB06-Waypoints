@@ -100,6 +100,7 @@ public sealed class CarCircuitDemo : MonoBehaviour
         playerCar = generatedRoot.GetComponentInChildren<PlayerCarController>(true);
         if (route != null && tracker != null) tracker.Configure(route, 10f, 3.5f);
         if (route != null) ConfigureExistingRacers(route.Waypoints);
+        ConfigureRacePresentation();
         if (navigationPanel == null) navigationPanel = GetComponent<LabNavigationPanel>();
         if (navigationPanel == null) navigationPanel = gameObject.AddComponent<LabNavigationPanel>();
         if (navigationPanel != null) navigationPanel.ConfigureCarDemo(this);
@@ -112,6 +113,27 @@ public sealed class CarCircuitDemo : MonoBehaviour
                 if (navigator != null) navigator.Focus(playerCar.transform);
             }
         }
+    }
+
+    private void ConfigureRacePresentation()
+    {
+        Transform ocean = generatedRoot.Find("Open Pacific");
+        if (ocean != null)
+        {
+            // Extend the ocean beyond the camera frustum so the finite starter plane
+            // cannot expose Unity's empty grey world around the island.
+            ocean.localScale = new Vector3(1000f, 1f, 1000f);
+        }
+
+        Camera camera = generatedRoot.GetComponentInChildren<Camera>(true);
+        if (camera == null) return;
+        camera.rect = new Rect(0f, 0f, 1f, 1f);
+        camera.orthographic = true;
+        camera.orthographicSize = 36f;
+        camera.transform.position = new Vector3(42f, 58f, 50f);
+        camera.transform.LookAt(new Vector3(0f, 0f, 0f));
+        VehicleCameraNavigator navigator = camera.GetComponent<VehicleCameraNavigator>();
+        if (navigator != null) navigator.CaptureCurrentAsOverview();
     }
 
     private void ConfigureExistingRacers(Transform[] points)
@@ -179,7 +201,7 @@ public sealed class CarCircuitDemo : MonoBehaviour
 
         Material grass = MakeMaterial("Tropical grass", new Color(0.19f, 0.39f, 0.2f));
         Material sand = MakeMaterial("Warm beach sand", new Color(0.83f, 0.69f, 0.43f));
-        Material water = MakeMaterial("Coastal water", new Color(0.05f, 0.48f, 0.63f));
+        Material water = MakeMaterial("Coastal water", new Color(0.02f, 0.27f, 0.42f));
         Material asphalt = MakeMaterial("Race asphalt", new Color(0.15f, 0.17f, 0.19f));
         Material white = MakeMaterial("Road markings", new Color(0.94f, 0.94f, 0.88f));
         Material red = MakeMaterial("Kerb red", new Color(0.85f, 0.08f, 0.06f));
@@ -406,9 +428,9 @@ public sealed class CarCircuitDemo : MonoBehaviour
         cameraObject.transform.SetParent(generatedRoot, true);
         cameraObject.AddComponent<AudioListener>();
         camera.orthographic = true;
-        camera.orthographicSize = 48f;
+        camera.orthographicSize = 36f;
         camera.fieldOfView = 47f;
-        camera.transform.position = new Vector3(49f, 56f, 62f);
+        camera.transform.position = new Vector3(42f, 58f, 50f);
         camera.transform.LookAt(new Vector3(0f, 0f, 0f));
         cameraObject.AddComponent<VehicleCameraNavigator>();
     }
