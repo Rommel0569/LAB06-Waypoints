@@ -27,7 +27,7 @@ public static class CarCircuitScenePreview
     private static void EnsurePreview()
     {
         if (EditorApplication.isPlayingOrWillChangePlaymode || EditorApplication.isCompiling ||
-            EditorApplication.isUpdating || EditorApplication.timeSinceStartup < 3.0) return;
+            EditorApplication.isUpdating) return;
         SceneAsset sceneAsset = AssetDatabase.LoadAssetAtPath<SceneAsset>(ScenePath);
         if (sceneAsset == null) return;
         for (int i = 0; i < EditorSceneManager.sceneCount; i++)
@@ -56,5 +56,6 @@ public static class CarCircuitScenePreview
     }
 }
 #endif
+
 
 
