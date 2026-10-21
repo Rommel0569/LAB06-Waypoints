@@ -130,7 +130,7 @@ public sealed class MainMenuController : MonoBehaviour
         menuCamera.rect = new Rect(0f, 0f, 1f, 1f);
         menuCamera.clearFlags = CameraClearFlags.SolidColor;
         menuCamera.backgroundColor = new Color(0.018f, 0.04f, 0.06f, 1f);
-        menuCamera.cullingMask = 0;
+        menuCamera.cullingMask = ~0;
         menuCamera.depth = -10f;
     }
 
