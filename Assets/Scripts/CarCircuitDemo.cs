@@ -6,16 +6,39 @@ using UnityEngine;
 /// around a closed waypoint circuit. Press T (or use the on-screen button) to switch
 /// between direct waypoint following and the moving-tracker method.
 /// </summary>
+[ExecuteAlways]
 public sealed class CarCircuitDemo : MonoBehaviour
 {
     [SerializeField] private int carCount = 4;
     [SerializeField, Min(0.1f)] private float trackWidth = 10f;
-    [SerializeField] private bool startInTrackerMode;
+    [SerializeField]
 
-    private readonly List<FollowWP> waypointDrivers = new List<FollowWP>();
-    private readonly List<FollowTracker> trackerDrivers = new List<FollowTracker>();
+    private List<FollowWP> waypointDrivers = new List<FollowWP>();
+    private List<FollowTracker> trackerDrivers = new List<FollowTracker>();
     private CircuitTracker tracker;
     private bool trackerMode;
+    private Transform generatedRoot;
+    private bool buildingPreview;
+    private LabNavigationPanel navigationPanel;
+
+    public bool TrackerMode => trackerMode;
+
+    public bool HasScenePreview => generatedRoot != null;
+    public void SetNavigationPanel(LabNavigationPanel panel) { navigationPanel = panel; }
+    public static void CreateEditModePreview(GameObject root)
+    {
+        if (root == null) return;
+        CarCircuitDemo demo = root.GetComponent<CarCircuitDemo>();
+        if (demo == null) demo = root.AddComponent<CarCircuitDemo>();
+        demo.EnsureScenePreview();
+    }
+    public void EditorSavePreview()
+    {
+#if UNITY_EDITOR
+        EnsureScenePreview();
+        CacheGeneratedObjects();
+#endif
+    }
 
     private static readonly Vector3[] CircuitPoints =
     {
@@ -35,20 +58,69 @@ public sealed class CarCircuitDemo : MonoBehaviour
         new Color(1f, 0.72f, 0.04f), new Color(0.08f, 0.62f, 0.2f)
     };
 
-    private void Awake()
+    private static Transform activeBuildRoot;
+
+    private void OnEnable()
     {
-        BuildCircuit();
-        SetTrackerMode(startInTrackerMode);
+        if (!Application.isPlaying) EnsureScenePreview();
     }
 
-    private void Update()
+    private void Awake()
     {
-        if (Input.GetKeyDown(KeyCode.T)) SetTrackerMode(!trackerMode);
-        if (Input.GetKeyDown(KeyCode.R)) ResetRace();
+        if (!Application.isPlaying) return;
+        EnsureScenePreview();
+        CacheGeneratedObjects();
+        SetTrackerMode(false);
+    }
+
+    private void EnsureScenePreview()
+    {
+        if (buildingPreview) return;
+        Transform existing = transform.Find("CAR CIRCUIT PREVIEW");
+        if (existing != null)
+        {
+            generatedRoot = existing;
+            CacheGeneratedObjects();
+            return;
+        }
+        buildingPreview = true;
+        BuildCircuit();
+        buildingPreview = false;
+        CacheGeneratedObjects();
+    }
+
+    private void CacheGeneratedObjects()
+    {
+        if (generatedRoot == null) generatedRoot = transform.Find("CAR CIRCUIT PREVIEW");
+        if (generatedRoot == null) return;
+        WaypointCircuit route = generatedRoot.GetComponentInChildren<WaypointCircuit>(true);
+        tracker = generatedRoot.GetComponentInChildren<CircuitTracker>(true);
+        waypointDrivers = new List<FollowWP>(generatedRoot.GetComponentsInChildren<FollowWP>(true));
+        trackerDrivers = new List<FollowTracker>(generatedRoot.GetComponentsInChildren<FollowTracker>(true));
+        if (route != null && tracker != null) tracker.Configure(route, 10f, 3.5f);
+        if (navigationPanel == null) navigationPanel = GetComponent<LabNavigationPanel>();
+        if (navigationPanel != null) navigationPanel.ConfigureCarDemo(this);
+    }
+
+    [ContextMenu("Rebuild visible circuit preview")]
+    private void RebuildVisibleCircuitPreview()
+    {
+#if UNITY_EDITOR
+        if (Application.isPlaying) return;
+        Transform existing = transform.Find("CAR CIRCUIT PREVIEW");
+        if (existing != null) DestroyImmediate(existing.gameObject);
+        generatedRoot = null;
+        EnsureScenePreview();
+#endif
     }
 
     private void BuildCircuit()
     {
+        GameObject preview = new GameObject("CAR CIRCUIT PREVIEW");
+        preview.transform.SetParent(transform, false);
+        generatedRoot = preview.transform;
+        activeBuildRoot = generatedRoot;
+
         Material grass = MakeMaterial("Tropical grass", new Color(0.19f, 0.39f, 0.2f));
         Material sand = MakeMaterial("Warm beach sand", new Color(0.83f, 0.69f, 0.43f));
         Material water = MakeMaterial("Coastal water", new Color(0.05f, 0.48f, 0.63f));
@@ -66,6 +138,7 @@ public sealed class CarCircuitDemo : MonoBehaviour
 
         List<Vector3> centerline = SampleCircuit(12);
         CreateRibbon("Asphalt circuit", centerline, trackWidth, asphalt, 0.04f);
+        CreateRibbon("Grass safety runoff", centerline, trackWidth + 5.6f, grass, -0.08f);
         CreateRibbon("Inside white line", centerline, 0.18f, white, 0.075f, true, -(trackWidth * 0.5f - 0.35f));
         CreateRibbon("Outside white line", centerline, 0.18f, white, 0.075f, true, trackWidth * 0.5f - 0.35f);
         AddKerbs(centerline, trackWidth, red, white);
@@ -73,7 +146,8 @@ public sealed class CarCircuitDemo : MonoBehaviour
         AddPalmGroves(grass);
         AddStartFinish(centerline, white, asphalt);
 
-        GameObject routeObject = new GameObject("Race Waypoint Circuit");
+        GameObject routeObject = new GameObject("Race Waypoint Circuit (15 ordered points)");
+        routeObject.transform.SetParent(generatedRoot, false);
         WaypointCircuit route = routeObject.AddComponent<WaypointCircuit>();
         Transform[] points = new Transform[CircuitPoints.Length];
         for (int i = 0; i < CircuitPoints.Length; i++)
@@ -93,10 +167,15 @@ public sealed class CarCircuitDemo : MonoBehaviour
             MakeMaterial("Tracker cyan", new Color(0f, 0.9f, 1f), true));
         tracker = trackerObject.AddComponent<CircuitTracker>();
         tracker.Configure(route, 10f, 3.5f);
-        trackerObject.SetActive(false);
+        tracker.enabled = false;
 
         SpawnCars(points);
         CreateLightingAndCamera();
+        CreatePaddock();
+        CreateStartGate(centerline, white);
+        navigationPanel = GetComponent<LabNavigationPanel>();
+        if (navigationPanel != null) navigationPanel.ConfigureCarDemo(this);
+        activeBuildRoot = null;
     }
 
     private void SpawnCars(Transform[] points)
@@ -113,9 +192,20 @@ public sealed class CarCircuitDemo : MonoBehaviour
             Vector3 start = points[startAt].position + side * laneOffsets[i] + Vector3.up * 0.05f;
 
             GameObject car = new GameObject(new[] { "Azure", "Coral", "Sunset", "Palm" }[i] + " Racer");
+            car.transform.SetParent(generatedRoot, true);
             car.transform.position = start;
             car.transform.rotation = Quaternion.LookRotation(tangent.normalized, Vector3.up);
             BuildCarModel(car.transform, TeamColors[i]);
+
+            BoxCollider chassis = car.AddComponent<BoxCollider>();
+            chassis.center = new Vector3(0f, 0.58f, 0f);
+            chassis.size = new Vector3(2.25f, 0.72f, 3.65f);
+            Rigidbody body = car.AddComponent<Rigidbody>();
+            body.useGravity = false;
+            body.mass = 1100f;
+            body.constraints = RigidbodyConstraints.FreezePositionY |
+                RigidbodyConstraints.FreezeRotationX | RigidbodyConstraints.FreezeRotationZ;
+            body.interpolation = RigidbodyInterpolation.Interpolate;
 
             FollowWP waypoint = car.AddComponent<FollowWP>();
             waypoint.Configure(points, speeds[i], (startAt + 1) % points.Length, laneOffsets[i]);
@@ -149,8 +239,16 @@ public sealed class CarCircuitDemo : MonoBehaviour
         for (int axle = -1; axle <= 1; axle += 2)
         {
             GameObject wheel = CreateChild(PrimitiveType.Cylinder, "Tire", parent,
-                new Vector3(side * 1.05f, 0.38f, axle * 1.08f), new Vector3(0.32f, 0.34f, 0.34f), rubber);
+                new Vector3(side * 1.05f, 0.38f, axle * 1.08f), new Vector3(0.32f, 0.34f, 0.34f), rubber, true);
             wheel.transform.localRotation = Quaternion.Euler(0f, 0f, 90f);
+            Collider visualCollider = wheel.GetComponent<Collider>();
+            if (visualCollider != null) visualCollider.enabled = false;
+            GameObject wheelColliderObject = new GameObject("Wheel Collider");
+            wheelColliderObject.transform.SetParent(parent, false);
+            wheelColliderObject.transform.localPosition = new Vector3(side * 0.92f, 0.37f, axle * 1.12f);
+            WheelCollider wheelCollider = wheelColliderObject.AddComponent<WheelCollider>();
+            wheelCollider.radius = 0.36f;
+            wheelCollider.suspensionDistance = 0.12f;
         }
     }
 
@@ -167,7 +265,7 @@ public sealed class CarCircuitDemo : MonoBehaviour
                 Vector3 position = path[i] + side * (edge * (width * 0.5f + 0.45f));
                 position.y = 0.12f;
                 CreatePrimitive("Alternating red-white kerb", PrimitiveType.Cube, position,
-                    new Vector3(1.15f, 0.22f, 1.05f), (i / stride) % 2 == 0 ? red : white).transform.rotation = rotation;
+                    new Vector3(1.15f, 0.22f, 1.05f), (i / stride) % 2 == 0 ? red : white, true).transform.rotation = rotation;
             }
         }
     }
@@ -184,7 +282,7 @@ public sealed class CarCircuitDemo : MonoBehaviour
                 Vector3 position = path[i] + side * (edge * (width * 0.5f + 2.1f));
                 position.y = 0.62f;
                 CreatePrimitive("Track safety barrier", PrimitiveType.Cube, position,
-                    new Vector3(0.55f, 1.15f, 5.4f), material).transform.rotation = rotation;
+                    new Vector3(0.55f, 1.15f, 5.4f), material, true).transform.rotation = rotation;
             }
         }
     }
@@ -199,8 +297,18 @@ public sealed class CarCircuitDemo : MonoBehaviour
                 basePoint + Vector3.up * 2f, new Vector3(0.48f, 2f, 0.48f),
                 MakeMaterial("Palm bark", new Color(0.35f, 0.22f, 0.1f)));
             trunk.transform.rotation = Quaternion.Euler(0f, angle * Mathf.Rad2Deg, 0f);
-            CreatePrimitive("Palm crown", PrimitiveType.Sphere,
-                basePoint + Vector3.up * 4.1f, new Vector3(1.65f, 0.6f, 1.65f), grass);
+            Vector3 crown = basePoint + Vector3.up * 4.15f;
+            CreatePrimitive("Palm heart", PrimitiveType.Sphere, crown, new Vector3(0.65f, 0.5f, 0.65f),
+                MakeMaterial("Palm heart green", new Color(0.16f, 0.42f, 0.12f)));
+            for (int frond = 0; frond < 8; frond++)
+            {
+                float yaw = frond * 45f + angle * Mathf.Rad2Deg;
+                Vector3 radial = Quaternion.Euler(0f, yaw, 0f) * Vector3.forward;
+                GameObject leaf = CreatePrimitive("Palm frond", PrimitiveType.Sphere,
+                    crown + radial * 1.45f + Vector3.down * 0.22f,
+                    new Vector3(0.38f, 0.22f, 2.8f), grass);
+                leaf.transform.rotation = Quaternion.LookRotation(radial + Vector3.down * 0.35f, Vector3.up);
+            }
         }
     }
 
@@ -222,6 +330,7 @@ public sealed class CarCircuitDemo : MonoBehaviour
     private void CreateLightingAndCamera()
     {
         GameObject lightObject = new GameObject("Tropical afternoon sun");
+        lightObject.transform.SetParent(generatedRoot, true);
         Light sunlight = lightObject.AddComponent<Light>();
         sunlight.type = LightType.Directional;
         sunlight.intensity = 1.25f;
@@ -230,21 +339,30 @@ public sealed class CarCircuitDemo : MonoBehaviour
 
         GameObject cameraObject = new GameObject("Race Camera");
         Camera camera = cameraObject.AddComponent<Camera>();
+        cameraObject.tag = "MainCamera";
+        cameraObject.transform.SetParent(generatedRoot, true);
         cameraObject.AddComponent<AudioListener>();
+        camera.orthographic = true;
+        camera.orthographicSize = 48f;
         camera.fieldOfView = 47f;
         camera.transform.position = new Vector3(49f, 56f, 62f);
         camera.transform.LookAt(new Vector3(0f, 0f, 0f));
+        cameraObject.AddComponent<VehicleCameraNavigator>();
     }
 
-    private void SetTrackerMode(bool enabled)
+    public void SetTrackerMode(bool enabled)
     {
         trackerMode = enabled;
-        if (tracker != null) tracker.gameObject.SetActive(enabled);
+        if (tracker != null)
+        {
+            tracker.gameObject.SetActive(enabled);
+            tracker.enabled = enabled;
+        }
         foreach (FollowWP driver in waypointDrivers) if (driver != null) driver.enabled = !enabled;
         foreach (FollowTracker driver in trackerDrivers) if (driver != null) driver.enabled = enabled;
     }
 
-    private void ResetRace()
+    public void ResetRace()
     {
         SceneManagerReload();
     }
@@ -258,11 +376,7 @@ public sealed class CarCircuitDemo : MonoBehaviour
 
     private void OnGUI()
     {
-        GUI.Box(new Rect(16, 16, 335, 88), "");
-        GUI.Label(new Rect(30, 26, 310, 24), "COSTA AZUL  |  CIRCUITO DE CARRERAS");
-        GUI.Label(new Rect(30, 50, 310, 20), trackerMode ? "Modo: tracker móvil" : "Modo: waypoints directos");
-        if (GUI.Button(new Rect(30, 75, 145, 24), "Cambiar modo (T)")) SetTrackerMode(!trackerMode);
-        if (GUI.Button(new Rect(185, 75, 120, 24), "Reiniciar (R)")) ResetRace();
+        // Controls are centralized in LabNavigationPanel in both laboratory scenes.
     }
 
     private void OnDrawGizmos()
@@ -311,12 +425,16 @@ public sealed class CarCircuitDemo : MonoBehaviour
             triangles[ti] = i * 2; triangles[ti + 1] = i * 2 + 1; triangles[ti + 2] = next * 2;
             triangles[ti + 3] = i * 2 + 1; triangles[ti + 4] = next * 2 + 1; triangles[ti + 5] = next * 2;
         }
-        Mesh mesh = new Mesh { name = name };
-        mesh.vertices = vertices; mesh.uv = uv; mesh.triangles = triangles;
-        mesh.RecalculateNormals(); mesh.RecalculateBounds();
+        Mesh mesh = CreatePersistentRibbonMesh(name, vertices, uv, triangles);
         GameObject road = new GameObject(name);
+        if (activeBuildRoot != null) road.transform.SetParent(activeBuildRoot, true);
         MeshFilter filter = road.AddComponent<MeshFilter>(); filter.sharedMesh = mesh;
         MeshRenderer renderer = road.AddComponent<MeshRenderer>(); renderer.sharedMaterial = material;
+        if (name == "Asphalt circuit" || name == "Grass safety runoff")
+        {
+            MeshCollider collision = road.AddComponent<MeshCollider>();
+            collision.sharedMesh = mesh;
+        }
     }
 
     private static Vector3 TangentAt(List<Vector3> points, int index)
@@ -339,6 +457,34 @@ public sealed class CarCircuitDemo : MonoBehaviour
         Shader shader = Shader.Find("Standard");
         if (shader == null) shader = Shader.Find("Universal Render Pipeline/Lit");
         if (shader == null) shader = Shader.Find("Unlit/Color");
+#if UNITY_EDITOR
+        if (!Application.isPlaying)
+        {
+            EnsureGeneratedAssetFolder();
+            string colorKey = ColorUtility.ToHtmlStringRGBA(color);
+            string fileName = "LAB06_" + SafeAssetName(name) + "_" + colorKey + ".mat";
+            string path = "Assets/LAB06Generated/" + fileName;
+            Material persistent = UnityEditor.AssetDatabase.LoadAssetAtPath<Material>(path);
+            if (persistent == null)
+            {
+                persistent = new Material(shader) { name = name, color = color };
+                UnityEditor.AssetDatabase.CreateAsset(persistent, path);
+            }
+            persistent.shader = shader;
+            persistent.color = color;
+            if (emission)
+            {
+                persistent.EnableKeyword("_EMISSION");
+                persistent.SetColor("_EmissionColor", color * 0.35f);
+            }
+            else
+            {
+                persistent.DisableKeyword("_EMISSION");
+            }
+            UnityEditor.EditorUtility.SetDirty(persistent);
+            return persistent;
+        }
+#endif
         Material material = new Material(shader) { name = name, color = color };
         if (emission)
         {
@@ -348,24 +494,115 @@ public sealed class CarCircuitDemo : MonoBehaviour
         return material;
     }
 
+    private static Mesh CreatePersistentRibbonMesh(string name, Vector3[] vertices, Vector2[] uv, int[] triangles)
+    {
+        Mesh mesh;
+#if UNITY_EDITOR
+        if (!Application.isPlaying)
+        {
+            EnsureGeneratedAssetFolder();
+            string path = "Assets/LAB06Generated/LAB06_" + SafeAssetName(name) + ".asset";
+            mesh = UnityEditor.AssetDatabase.LoadAssetAtPath<Mesh>(path);
+            if (mesh == null)
+            {
+                mesh = new Mesh { name = name };
+                UnityEditor.AssetDatabase.CreateAsset(mesh, path);
+            }
+            else
+            {
+                mesh.Clear();
+            }
+            mesh.vertices = vertices;
+            mesh.uv = uv;
+            mesh.triangles = triangles;
+            mesh.RecalculateNormals();
+            mesh.RecalculateBounds();
+            UnityEditor.EditorUtility.SetDirty(mesh);
+            return mesh;
+        }
+#endif
+        mesh = new Mesh { name = name };
+        mesh.vertices = vertices;
+        mesh.uv = uv;
+        mesh.triangles = triangles;
+        mesh.RecalculateNormals();
+        mesh.RecalculateBounds();
+        return mesh;
+    }
+
+#if UNITY_EDITOR
+    private static void EnsureGeneratedAssetFolder()
+    {
+        if (!UnityEditor.AssetDatabase.IsValidFolder("Assets/LAB06Generated"))
+            UnityEditor.AssetDatabase.CreateFolder("Assets", "LAB06Generated");
+    }
+#endif
+
+    private static string SafeAssetName(string value)
+    {
+        return System.Text.RegularExpressions.Regex.Replace(value, "[^a-zA-Z0-9]", string.Empty);
+    }
+
     private static GameObject CreatePrimitive(string name, PrimitiveType type, Vector3 position,
-        Vector3 scale, Material material)
+        Vector3 scale, Material material, bool collision = false)
     {
         GameObject item = GameObject.CreatePrimitive(type);
         item.name = name; item.transform.position = position; item.transform.localScale = scale;
+        if (activeBuildRoot != null) item.transform.SetParent(activeBuildRoot, true);
         Renderer renderer = item.GetComponent<Renderer>(); if (renderer != null) renderer.sharedMaterial = material;
-        Collider collider = item.GetComponent<Collider>(); if (collider != null) Destroy(collider);
+        Collider collider = item.GetComponent<Collider>(); if (collider != null) collider.enabled = collision;
         return item;
     }
 
     private static GameObject CreateChild(PrimitiveType type, string name, Transform parent,
-        Vector3 localPosition, Vector3 localScale, Material material)
+        Vector3 localPosition, Vector3 localScale, Material material, bool collision = false)
     {
         GameObject child = GameObject.CreatePrimitive(type);
         child.name = name; child.transform.SetParent(parent, false);
         child.transform.localPosition = localPosition; child.transform.localScale = localScale;
         Renderer renderer = child.GetComponent<Renderer>(); if (renderer != null) renderer.sharedMaterial = material;
-        Collider collider = child.GetComponent<Collider>(); if (collider != null) Destroy(collider);
+        Collider collider = child.GetComponent<Collider>(); if (collider != null) collider.enabled = collision;
         return child;
+    }
+
+    private void CreatePaddock()
+    {
+        Material wall = MakeMaterial("Pit garage white", new Color(0.78f, 0.82f, 0.8f));
+        Material roof = MakeMaterial("Pit garage teal", new Color(0.04f, 0.28f, 0.34f));
+        Material stand = MakeMaterial("Grandstand seats", new Color(0.82f, 0.27f, 0.08f));
+        for (int bay = 0; bay < 4; bay++)
+        {
+            Vector3 p = new Vector3(-8f + bay * 4f, 1.1f, -34f);
+            CreatePrimitive("Pit garage bay " + (bay + 1), PrimitiveType.Cube, p,
+                new Vector3(3.8f, 2.2f, 5f), wall);
+            CreatePrimitive("Pit garage roof " + (bay + 1), PrimitiveType.Cube,
+                p + Vector3.up * 1.3f, new Vector3(4.1f, 0.35f, 5.3f), roof);
+        }
+        for (int row = 0; row < 4; row++)
+        {
+            Vector3 p = new Vector3(27f, 0.6f + row * 0.72f, 0f);
+            CreatePrimitive("Spectator grandstand row " + (row + 1), PrimitiveType.Cube,
+                p, new Vector3(5f, 0.48f, 17f - row * 1.5f), stand);
+        }
+        CreatePrimitive("Tropical circuit sign", PrimitiveType.Cube,
+            new Vector3(0f, 3.5f, -34f), new Vector3(13f, 2.1f, 0.45f), roof);
+    }
+
+    private void CreateStartGate(List<Vector3> path, Material material)
+    {
+        Vector3 tangent = TangentAt(path, 0);
+        GameObject gate = CreatePrimitive("Start Finish Lap Trigger", PrimitiveType.Cube,
+            path[0] + Vector3.up, new Vector3(trackWidth - 0.6f, 2f, 0.35f), material, true);
+        gate.transform.rotation = Quaternion.LookRotation(tangent, Vector3.up);
+        BoxCollider trigger = gate.GetComponent<BoxCollider>();
+        trigger.isTrigger = true;
+        Rigidbody triggerBody = gate.AddComponent<Rigidbody>();
+        triggerBody.isKinematic = true;
+        triggerBody.useGravity = false;
+        gate.AddComponent<RaceLapCounter>();
+        CreatePrimitive("Start finish arch", PrimitiveType.Cube,
+            path[0] + Vector3.up * 3.5f, new Vector3(trackWidth + 0.8f, 0.22f, 0.3f),
+            MakeMaterial("Finish arch teal", new Color(0.02f, 0.35f, 0.42f)), true)
+            .transform.rotation = Quaternion.LookRotation(tangent, Vector3.up);
     }
 }

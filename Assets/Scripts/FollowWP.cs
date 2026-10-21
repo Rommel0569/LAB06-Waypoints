@@ -7,12 +7,13 @@ public sealed class FollowWP : MonoBehaviour
     [SerializeField, Min(0.1f)] private float moveSpeed = 8f;
     [SerializeField, Min(1f)] private float turnSpeed = 120f;
     [SerializeField, Min(0.05f)] private float arrivalDistance = 1.25f;
-    [SerializeField, Min(0)] private int startingWaypoint;
+    [SerializeField, Min(0)] private int startingWaypoint = 0;
     [SerializeField] private float laneOffset;
     [SerializeField] private bool drawRoute = true;
 
     private int currentWaypoint;
     private bool configuredAtRuntime;
+    private Rigidbody body;
 
     public int CurrentWaypoint => currentWaypoint;
     public float MoveSpeed { get => moveSpeed; set => moveSpeed = Mathf.Max(0.1f, value); }
@@ -28,6 +29,7 @@ public sealed class FollowWP : MonoBehaviour
 
     private void Start()
     {
+        body = GetComponent<Rigidbody>();
         if (waypoints == null || waypoints.Length == 0)
             Debug.LogError($"{name}: asigna al menos un waypoint en FollowWP.", this);
         else if (!configuredAtRuntime)
@@ -35,6 +37,17 @@ public sealed class FollowWP : MonoBehaviour
     }
 
     private void Update()
+    {
+        if (Application.isPlaying && body == null) body = GetComponent<Rigidbody>();
+        if (body == null) MoveTowardsWaypoint(Time.deltaTime, false);
+    }
+
+    private void FixedUpdate()
+    {
+        if (body != null) MoveTowardsWaypoint(Time.fixedDeltaTime, true);
+    }
+
+    private void MoveTowardsWaypoint(float deltaTime, bool usePhysics)
     {
         if (waypoints == null || waypoints.Length == 0) return;
         if (waypoints[currentWaypoint] == null)
@@ -54,9 +67,18 @@ public sealed class FollowWP : MonoBehaviour
         }
 
         Quaternion targetRotation = Quaternion.LookRotation(direction.normalized, Vector3.up);
-        transform.rotation = Quaternion.RotateTowards(transform.rotation, targetRotation, turnSpeed * Time.deltaTime);
+        Quaternion nextRotation = Quaternion.RotateTowards(transform.rotation, targetRotation, turnSpeed * deltaTime);
+        if (usePhysics) body.MoveRotation(nextRotation);
+        else transform.rotation = nextRotation;
         float alignment = Mathf.Clamp01(Vector3.Dot(transform.forward, direction.normalized));
-        transform.position += transform.forward * (moveSpeed * alignment * Time.deltaTime);
+        Vector3 nextPosition = transform.position + transform.forward * (moveSpeed * alignment * deltaTime);
+        if (usePhysics) body.MovePosition(nextPosition);
+        else transform.position = nextPosition;
+        if (usePhysics)
+        {
+            Vector3 position = body.position;
+            body.position = new Vector3(position.x, 0.05f, position.z);
+        }
     }
 
     private Vector3 GetWaypointPosition(int index)
