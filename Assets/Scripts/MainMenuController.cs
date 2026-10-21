@@ -57,6 +57,7 @@ public sealed class MainMenuController : MonoBehaviour
 
     private void BuildMenu()
     {
+        EnsureMenuCamera();
         Transform existing = transform.Find("Main Menu Canvas");
         if (existing != null)
         {
@@ -112,6 +113,25 @@ public sealed class MainMenuController : MonoBehaviour
         CreateText(canvasObject.transform, "Version Footer", "UNITY 6000.3.17f1      /      WASD PARA CONDUCIR",
             650, 630, 550, 27, 11, FontStyle.Bold, new Color(0.54f, 0.66f, 0.71f), TextAnchor.MiddleRight);
         ApplyResponsiveLayout();
+    }
+
+    private void EnsureMenuCamera()
+    {
+        Camera menuCamera = GetComponentInChildren<Camera>(true);
+        if (menuCamera == null)
+        {
+            GameObject cameraObject = new GameObject("Main Menu Camera");
+            cameraObject.transform.SetParent(transform, false);
+            menuCamera = cameraObject.AddComponent<Camera>();
+        }
+        menuCamera.tag = "MainCamera";
+        menuCamera.enabled = true;
+        menuCamera.targetDisplay = 0;
+        menuCamera.rect = new Rect(0f, 0f, 1f, 1f);
+        menuCamera.clearFlags = CameraClearFlags.SolidColor;
+        menuCamera.backgroundColor = new Color(0.018f, 0.04f, 0.06f, 1f);
+        menuCamera.cullingMask = 0;
+        menuCamera.depth = -10f;
     }
 
     /// <summary>Keeps the complete selector visible and fills the Game view, including panoramic layouts.</summary>
