@@ -121,6 +121,9 @@ public sealed class LabNavigationPanel : MonoBehaviour
 
     private void EnsureEventSystem()
     {
+        // Edit Mode only needs the serialized Canvas/Graphics for the visible scene preview.
+        // Resolve the optional Input System UI assembly only after packages load in Play Mode.
+        if (!Application.isPlaying) return;
         EventSystem system = GetComponentInChildren<EventSystem>(true);
         GameObject eventSystemObject;
         if (system == null)
@@ -133,7 +136,16 @@ public sealed class LabNavigationPanel : MonoBehaviour
             eventSystemObject = system.gameObject;
             if (system.GetComponent<BaseInputModule>() != null) return;
         }
-        Type uiModuleType = Type.GetType("UnityEngine.InputSystem.UI.InputSystemUIInputModule, Unity.InputSystem");
+        Type uiModuleType;
+        try
+        {
+            uiModuleType = Type.GetType("UnityEngine.InputSystem.UI.InputSystemUIInputModule, Unity.InputSystem", false);
+        }
+        catch (Exception exception)
+        {
+            Debug.LogWarning("Input System UI aun no esta disponible: " + exception.Message, this);
+            return;
+        }
         if (uiModuleType == null)
         {
             Debug.LogWarning("Input System aun no se ha cargado; el panel instalara su modulo de UI al resolver el paquete.", this);

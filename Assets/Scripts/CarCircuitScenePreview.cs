@@ -21,7 +21,7 @@ public static class CarCircuitScenePreview
         GameObject root = GameObject.Find("CostaAzulRaceBootstrap");
         CarCircuitDemo.CreateEditModePreview(root);
         SavePreview(root);
-        root.GetComponent<CarCircuitDemo>().EditorSavePreview();
+        FrameCircuit();
     }
 
     private static void EnsurePreview()
@@ -45,6 +45,7 @@ public static class CarCircuitScenePreview
         GameObject bootstrap = GameObject.Find("CostaAzulRaceBootstrap");
         CarCircuitDemo.CreateEditModePreview(bootstrap);
         SavePreview(bootstrap);
+        FrameCircuit();
     }
 
     private static void SavePreview(GameObject root)
@@ -53,6 +54,16 @@ public static class CarCircuitScenePreview
         EditorSceneManager.MarkSceneDirty(EditorSceneManager.GetActiveScene());
         EditorSceneManager.SaveScene(EditorSceneManager.GetActiveScene());
         AssetDatabase.SaveAssets();
+    }
+
+    private static void FrameCircuit()
+    {
+        SceneView view = SceneView.lastActiveSceneView;
+        if (view != null)
+        {
+            view.Frame(new Bounds(Vector3.zero, new Vector3(115f, 16f, 105f)), false);
+            view.Repaint();
+        }
     }
 }
 #endif
