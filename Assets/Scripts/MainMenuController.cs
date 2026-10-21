@@ -24,7 +24,9 @@ public sealed class MainMenuController : MonoBehaviour
         if (!Application.isPlaying) return;
         BuildMenu();
         ApplyResponsiveLayout();
+        BindButton("Tank Mode Card", tankScene);
         BindButton("Tank Mode Card/Enter Mode", tankScene);
+        BindButton("Car Mode Card", carScene);
         BindButton("Car Mode Card/Enter Mode", carScene);
         EnsureEventSystem();
     }
@@ -49,10 +51,37 @@ public sealed class MainMenuController : MonoBehaviour
         EventSystem system = FindFirstObjectByType<EventSystem>();
         GameObject target = system != null ? system.gameObject : new GameObject("Menu Event System", typeof(EventSystem));
         if (system == null) target.transform.SetParent(transform, false);
-        if (target.GetComponent<BaseInputModule>() != null) return;
         Type inputModule = Type.GetType("UnityEngine.InputSystem.UI.InputSystemUIInputModule, Unity.InputSystem", false);
-        if (inputModule != null) target.AddComponent(inputModule);
-        else Debug.LogError("El paquete Input System no tiene su modulo de UI cargado; los botones no recibiran clics.", this);
+        if (inputModule == null)
+        {
+            Debug.LogError("El paquete Input System no tiene su modulo de UI cargado; los botones no recibiran clics.", this);
+            return;
+        }
+
+        // A scene or another bootstrapper may have left the legacy StandaloneInputModule
+        // on this EventSystem. It is incompatible with projects using Input System only.
+        BaseInputModule[] modules = target.GetComponents<BaseInputModule>();
+        for (int i = 0; i < modules.Length; i++)
+        {
+            if (modules[i] != null && modules[i].GetType() != inputModule)
+            {
+                if (Application.isPlaying) Destroy(modules[i]);
+                else DestroyImmediate(modules[i]);
+            }
+        }
+
+        Component module = target.GetComponent(inputModule);
+        if (module == null) module = target.AddComponent(inputModule);
+        if (module is Behaviour behaviour) behaviour.enabled = true;
+
+        // Explicitly initialize the module's mouse, touch, navigation and submit actions.
+        // OnEnable does this for a new module; this also repairs a reused module with empty actions.
+        var actionsAsset = inputModule.GetProperty("actionsAsset");
+        if (actionsAsset != null && actionsAsset.GetValue(module) == null)
+        {
+            var assignDefaultActions = inputModule.GetMethod("AssignDefaultActions");
+            if (assignDefaultActions != null) assignDefaultActions.Invoke(module, null);
+        }
     }
 
     private void BuildMenu()
@@ -251,12 +280,21 @@ public sealed class MainMenuController : MonoBehaviour
     private static void CreateCard(Transform parent, string name, string title, string description,
         Vector2 position, Color color, string action, UnityEngine.Events.UnityAction callback)
     {
-        GameObject card = new GameObject(name, typeof(RectTransform), typeof(Image));
+        GameObject card = new GameObject(name, typeof(RectTransform), typeof(Image), typeof(Button));
         card.transform.SetParent(parent, false);
         RectTransform rect = card.GetComponent<RectTransform>();
         rect.anchorMin = new Vector2(0, 1); rect.anchorMax = new Vector2(0, 1);
         rect.pivot = new Vector2(0, 1); rect.anchoredPosition = position; rect.sizeDelta = new Vector2(540, 285);
-        card.GetComponent<Image>().color = color;
+        Image cardImage = card.GetComponent<Image>();
+        cardImage.color = color;
+        Button cardButton = card.GetComponent<Button>();
+        cardButton.targetGraphic = cardImage;
+        ColorBlock cardColors = cardButton.colors;
+        cardColors.normalColor = color;
+        cardColors.highlightedColor = new Color(color.r + 0.025f, color.g + 0.045f, color.b + 0.05f, color.a);
+        cardColors.pressedColor = new Color(color.r + 0.04f, color.g + 0.07f, color.b + 0.075f, color.a);
+        cardButton.colors = cardColors;
+        cardButton.onClick.AddListener(callback);
         CreateImage(card.transform, "Card Accent", Vector2.zero, new Vector2(5, 285),
             title.Contains("TANQUES") ? new Color(0.91f, 0.57f, 0.2f) : new Color(0.15f, 0.87f, 0.81f));
         CreateText(card.transform, "Mode Title", title, 27, 19, 485, 38, 19,
