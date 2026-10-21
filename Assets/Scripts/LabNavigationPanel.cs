@@ -1,310 +1,247 @@
-using System;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.SceneManagement;
 using UnityEngine.UI;
 
-/// <summary>Builds a visible in-scene HUD and lets the user navigate both lab scenes.</summary>
+/// <summary>Compact race HUD with a clear return-to-mode-selection control.</summary>
 [ExecuteAlways]
 public sealed class LabNavigationPanel : MonoBehaviour
 {
     [SerializeField] private string tankScene = "TankRacing";
     [SerializeField] private string carScene = "CarCircuit";
-    private FollowWP[] vehicles = Array.Empty<FollowWP>();
-    private VehicleCameraNavigator cameraNavigator;
-    private CarCircuitDemo carDemo;
-    private RaceLapCounter lapCounter;
-    private int selectedIndex = -1;
-    private bool carSceneMode;
+    [SerializeField] private string menuScene = "MainMenu";
+
     private Canvas canvas;
     private Text sceneLabel;
-    private Text vehicleLabel;
-    private Text modeLabel;
-    private Text lapLabel;
+    private Text controlLabel;
+    private Text speedLabel;
+    private PlayerCarController player;
+    private CarCircuitDemo carDemo;
+    private VehicleCameraNavigator cameraNavigator;
+    private bool overviewView;
 
     private void OnEnable()
     {
-        CarCircuitDemo demo = GetComponent<CarCircuitDemo>();
-        if (demo != null) ConfigureCarDemo(demo);
-        if (!Application.isPlaying) EnsureVisibleCanvas();
+        carDemo = GetComponent<CarCircuitDemo>();
+        if (carDemo != null) carDemo.SetNavigationPanel(this);
+        if (!Application.isPlaying) EnsureCanvas();
     }
 
     public void ConfigureCarDemo(CarCircuitDemo demo)
     {
-        carSceneMode = demo != null;
+        carDemo = demo;
         if (demo != null) demo.SetNavigationPanel(this);
     }
 
     private void Start()
     {
         if (!Application.isPlaying) return;
-        EnsureVisibleCanvas();
-        RefreshSceneReferences();
+        EnsureCanvas();
+        player = FindFirstObjectByType<PlayerCarController>();
+        Camera camera = Camera.main;
+        if (camera != null) cameraNavigator = camera.GetComponent<VehicleCameraNavigator>();
         BindButtons();
-        UpdateLabels();
+        EnsureEventSystem();
+        RefreshLabels();
     }
 
     private void Update()
     {
-        if (Application.isPlaying) UpdateLabels();
-        else if (canvas != null && sceneLabel != null) UpdateLabels();
+        if (canvas == null) EnsureCanvas();
+        if (Application.isPlaying) RefreshLabels();
     }
 
-    private void EnsureVisibleCanvas()
+    private void EnsureCanvas()
     {
-        Transform existing = transform.Find("LAB06 Navigation Canvas");
+        Transform existing = transform.Find("LAB06 Race HUD");
+        Transform legacy = transform.Find("LAB06 Navigation Canvas");
+        if (legacy != null)
+        {
+            if (Application.isPlaying) Destroy(legacy.gameObject);
+            else DestroyImmediate(legacy.gameObject);
+        }
+        if (existing != null)
+        {
+            Transform panel = existing.Find("HUD Panel");
+            if (panel == null || FindText(panel, "Controls") == null || FindText(panel, "Speed") == null)
+            {
+                if (Application.isPlaying) Destroy(existing.gameObject);
+                else DestroyImmediate(existing.gameObject);
+                existing = null;
+            }
+        }
         if (existing != null)
         {
             canvas = existing.GetComponent<Canvas>();
-            Transform panel = existing.Find("Navigation Panel");
+            Transform panel = existing.Find("HUD Panel");
             if (panel != null)
             {
-                sceneLabel = FindLabel(panel, "Scene Status");
-                vehicleLabel = FindLabel(panel, "Selected Vehicle");
-                modeLabel = FindLabel(panel, "Mode Status");
-                lapLabel = FindLabel(panel, "Lap Status");
+                sceneLabel = FindText(panel, "Scene Label");
+                controlLabel = FindText(panel, "Controls");
+                speedLabel = FindText(panel, "Speed");
             }
-            EnsureEventSystem();
-            if (!Application.isPlaying) UpdateLabels();
             return;
         }
 
-        GameObject canvasObject = new GameObject("LAB06 Navigation Canvas",
-            typeof(RectTransform), typeof(Canvas), typeof(CanvasScaler), typeof(GraphicRaycaster));
+        GameObject canvasObject = new GameObject("LAB06 Race HUD", typeof(RectTransform), typeof(Canvas),
+            typeof(CanvasScaler), typeof(GraphicRaycaster));
         canvasObject.transform.SetParent(transform, false);
         canvas = canvasObject.GetComponent<Canvas>();
         canvas.renderMode = RenderMode.ScreenSpaceOverlay;
         CanvasScaler scaler = canvasObject.GetComponent<CanvasScaler>();
         scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
-        scaler.referenceResolution = new Vector2(1280f, 720f);
+        scaler.referenceResolution = new Vector2(1280, 720);
         scaler.matchWidthOrHeight = 0.5f;
 
-        GameObject panelObject = new GameObject("Navigation Panel", typeof(RectTransform), typeof(Image));
+        GameObject panelObject = new GameObject("HUD Panel", typeof(RectTransform), typeof(Image));
         panelObject.transform.SetParent(canvasObject.transform, false);
-        RectTransform panelRect = panelObject.GetComponent<RectTransform>();
-        AnchorTopLeft(panelRect, 14f, 14f, 468f, 252f);
-        panelObject.GetComponent<Image>().color = new Color(0.035f, 0.09f, 0.13f, 0.94f);
+        RectTransform rect = panelObject.GetComponent<RectTransform>();
+        rect.anchorMin = new Vector2(1, 1); rect.anchorMax = new Vector2(1, 1);
+        rect.pivot = new Vector2(1, 1); rect.anchoredPosition = new Vector2(-22, -22);
+        rect.sizeDelta = new Vector2(390, 190);
+        panelObject.GetComponent<Image>().color = new Color(0.035f, 0.075f, 0.095f, 0.88f);
 
-        CreateLabel(panelObject.transform, "Panel Title", "LAB 06  |  NAVEGACION", 16f, 14f, 434f, 28f,
-            18, FontStyle.Bold, new Color(0.43f, 0.91f, 0.86f), TextAnchor.MiddleLeft);
-        sceneLabel = CreateLabel(panelObject.transform, "Scene Status", "Escena actual", 16f, 43f, 434f, 24f,
-            13, FontStyle.Normal, Color.white, TextAnchor.MiddleLeft);
-        CreateButton(panelObject.transform, "Open Tank Scene", "TANQUES", 16f, 73f, 210f, 34f,
-            () => LoadScene(tankScene));
-        CreateButton(panelObject.transform, "Open Car Scene", "CIRCUITO DE AUTOS", 242f, 73f, 210f, 34f,
-            () => LoadScene(carScene));
-
-        CreateLabel(panelObject.transform, "Vehicle Caption", "VEHICULO", 16f, 116f, 86f, 30f,
-            11, FontStyle.Bold, new Color(0.62f, 0.74f, 0.79f), TextAnchor.MiddleLeft);
-        CreateButton(panelObject.transform, "Previous Vehicle", "<", 106f, 116f, 38f, 30f,
-            () => StepVehicle(-1));
-        vehicleLabel = CreateLabel(panelObject.transform, "Selected Vehicle", "Vista general", 150f, 116f, 256f, 30f,
-            13, FontStyle.Bold, Color.white, TextAnchor.MiddleCenter);
-        CreateButton(panelObject.transform, "Next Vehicle", ">", 412f, 116f, 40f, 30f,
-            () => StepVehicle(1));
-
-        CreateButton(panelObject.transform, "Focus Vehicle", "ENFOCAR VEHICULO", 16f, 155f, 210f, 34f,
-            () => FocusVehicle(selectedIndex < 0 ? 0 : selectedIndex));
-        CreateButton(panelObject.transform, "Overview", "VISTA GENERAL", 242f, 155f, 210f, 34f,
-            ShowOverview);
-        CreateButton(panelObject.transform, "Movement Mode", "MODO DE MOVIMIENTO", 16f, 198f, 250f, 36f,
-            ToggleMovementMode);
-        modeLabel = CreateLabel(panelObject.transform, "Mode Status", "", 274f, 198f, 178f, 18f,
-            10, FontStyle.Normal, new Color(0.74f, 0.83f, 0.85f), TextAnchor.MiddleLeft);
-        lapLabel = CreateLabel(panelObject.transform, "Lap Status", "Vueltas: 0", 274f, 215f, 178f, 17f,
-            10, FontStyle.Normal, new Color(0.74f, 0.83f, 0.85f), TextAnchor.MiddleLeft);
-
-        EnsureEventSystem();
-        RefreshSceneReferences();
-        UpdateLabels();
-    }
-
-    private void EnsureEventSystem()
-    {
-        // Edit Mode only needs the serialized Canvas/Graphics for the visible scene preview.
-        // Resolve the optional Input System UI assembly only after packages load in Play Mode.
-        if (!Application.isPlaying) return;
-        EventSystem system = GetComponentInChildren<EventSystem>(true);
-        GameObject eventSystemObject;
-        if (system == null)
-        {
-            eventSystemObject = new GameObject("LAB06 UI Event System", typeof(EventSystem));
-            eventSystemObject.transform.SetParent(transform, false);
-        }
-        else
-        {
-            eventSystemObject = system.gameObject;
-            if (system.GetComponent<BaseInputModule>() != null) return;
-        }
-        Type uiModuleType;
-        try
-        {
-            uiModuleType = Type.GetType("UnityEngine.InputSystem.UI.InputSystemUIInputModule, Unity.InputSystem", false);
-        }
-        catch (Exception exception)
-        {
-            Debug.LogWarning("Input System UI aun no esta disponible: " + exception.Message, this);
-            return;
-        }
-        if (uiModuleType == null)
-        {
-            Debug.LogWarning("Input System aun no se ha cargado; el panel instalara su modulo de UI al resolver el paquete.", this);
-            return;
-        }
-        eventSystemObject.AddComponent(uiModuleType);
+        sceneLabel = CreateText(panelObject.transform, "Scene Label", "COSTA AZUL  |  RACE CONTROL",
+            new Vector2(18, -14), new Vector2(350, 26), 16, FontStyle.Bold, new Color(0.4f, 0.91f, 0.86f));
+        controlLabel = CreateText(panelObject.transform, "Controls", "WASD / FLECHAS  conducir\nESPACIO  freno de mano",
+            new Vector2(18, -46), new Vector2(180, 46), 12, FontStyle.Normal, Color.white);
+        speedLabel = CreateText(panelObject.transform, "Speed", "VELOCIDAD  0 km/h",
+            new Vector2(210, -48), new Vector2(164, 42), 13, FontStyle.Bold, new Color(0.85f, 0.92f, 0.95f));
+        CreateButton(panelObject.transform, "Movement Mode", "MODO WAYPOINTS",
+            new Vector2(18, -94), new Vector2(164, 34), ToggleMovementMode);
+        CreateButton(panelObject.transform, "Main Menu", "SELECCIONAR MODO",
+            new Vector2(210, -140), new Vector2(164, 36), () => Load(menuScene));
+        CreateButton(panelObject.transform, "Tank Mode", "TANQUES",
+            new Vector2(18, -140), new Vector2(88, 34), () => Load(tankScene));
+        CreateButton(panelObject.transform, "Car Mode", "CARRERA",
+            new Vector2(111, -140), new Vector2(82, 34), () => Load(carScene));
+        CreateButton(panelObject.transform, "Camera View", "CAMARA",
+            new Vector2(210, -94), new Vector2(164, 34), ToggleCameraView);
     }
 
     private void BindButtons()
     {
-        foreach (Button button in GetComponentsInChildren<Button>(true))
-            button.onClick.RemoveAllListeners();
-        Button[] buttons = GetComponentsInChildren<Button>(true);
-        Bind(buttons, "Open Tank Scene", () => LoadScene(tankScene));
-        Bind(buttons, "Open Car Scene", () => LoadScene(carScene));
-        Bind(buttons, "Previous Vehicle", () => StepVehicle(-1));
-        Bind(buttons, "Next Vehicle", () => StepVehicle(1));
-        Bind(buttons, "Focus Vehicle", () => FocusVehicle(selectedIndex < 0 ? 0 : selectedIndex));
-        Bind(buttons, "Overview", ShowOverview);
-        Bind(buttons, "Movement Mode", ToggleMovementMode);
+        Bind("Main Menu", () => Load(menuScene));
+        Bind("Tank Mode", () => Load(tankScene));
+        Bind("Car Mode", () => Load(carScene));
+        Bind("Camera View", ToggleCameraView);
+        Bind("Movement Mode", ToggleMovementMode);
     }
 
-    private static void Bind(Button[] buttons, string name, UnityEngine.Events.UnityAction action)
+    private void Bind(string name, UnityEngine.Events.UnityAction action)
     {
-        Button button = null;
-        for (int i = 0; i < buttons.Length; i++)
-            if (buttons[i] != null && buttons[i].name == name) { button = buttons[i]; break; }
-        if (button != null) button.onClick.AddListener(action);
+        Transform buttonObject = transform.Find("LAB06 Race HUD/HUD Panel/" + name);
+        Button button = buttonObject == null ? null : buttonObject.GetComponent<Button>();
+        if (button == null) return;
+        button.onClick.RemoveAllListeners();
+        button.onClick.AddListener(action);
     }
 
-    private void RefreshSceneReferences()
+    private void EnsureEventSystem()
     {
-        vehicles = FindObjectsByType<FollowWP>(FindObjectsSortMode.None);
-        System.Array.Sort(vehicles, (left, right) => string.CompareOrdinal(left.name, right.name));
-        if (carSceneMode && carDemo == null) carDemo = GetComponent<CarCircuitDemo>();
-        lapCounter = FindFirstObjectByType<RaceLapCounter>();
-        Camera camera = Camera.main;
-        if (camera == null) camera = FindFirstObjectByType<Camera>();
-        if (camera != null)
+        EventSystem system = FindFirstObjectByType<EventSystem>();
+        GameObject target = system != null ? system.gameObject : new GameObject("LAB06 UI Event System", typeof(EventSystem));
+        if (system == null) target.transform.SetParent(transform, false);
+        if (target.GetComponent<BaseInputModule>() != null) return;
+        System.Type inputModule = System.Type.GetType("UnityEngine.InputSystem.UI.InputSystemUIInputModule, Unity.InputSystem", false);
+        if (inputModule != null) target.AddComponent(inputModule);
+        else Debug.LogError("El paquete Input System no tiene su modulo de UI cargado; los botones no recibiran clics.", this);
+    }
+
+    private void ToggleCameraView()
+    {
+        overviewView = !overviewView;
+        if (cameraNavigator == null)
         {
-            cameraNavigator = camera.GetComponent<VehicleCameraNavigator>();
-            if (cameraNavigator == null) cameraNavigator = camera.gameObject.AddComponent<VehicleCameraNavigator>();
+            Camera camera = Camera.main;
+            if (camera != null) cameraNavigator = camera.GetComponent<VehicleCameraNavigator>();
         }
+        if (cameraNavigator == null) return;
+        if (overviewView) cameraNavigator.ShowOverview();
+        else if (player != null) cameraNavigator.Focus(player.transform);
     }
 
-    private void StepVehicle(int direction)
+    private void RefreshLabels()
     {
-        if (vehicles.Length == 0) RefreshSceneReferences();
-        if (vehicles.Length == 0) return;
-        int next = selectedIndex < 0 ? (direction > 0 ? 0 : vehicles.Length - 1) : selectedIndex + direction;
-        FocusVehicle((next % vehicles.Length + vehicles.Length) % vehicles.Length);
-    }
-
-    private void FocusVehicle(int index)
-    {
-        if (vehicles.Length == 0) RefreshSceneReferences();
-        if (vehicles.Length == 0) return;
-        selectedIndex = (index % vehicles.Length + vehicles.Length) % vehicles.Length;
-        if (cameraNavigator != null) cameraNavigator.Focus(vehicles[selectedIndex].transform);
-        UpdateLabels();
-    }
-
-    private void ShowOverview()
-    {
-        selectedIndex = -1;
-        if (cameraNavigator != null) cameraNavigator.ShowOverview();
-        UpdateLabels();
+        if (sceneLabel == null) return;
+        string active = SceneManager.GetActiveScene().name;
+        sceneLabel.text = active == carScene ? "COSTA AZUL  |  CARRERA" : "LAB 06  |  WAYPOINTS - TANQUES";
+        if (speedLabel == null || controlLabel == null) return;
+        player = player == null ? FindFirstObjectByType<PlayerCarController>() : player;
+        if (carDemo == null) carDemo = FindFirstObjectByType<CarCircuitDemo>();
+        bool driving = player != null && active == carScene;
+        controlLabel.text = driving
+            ? "WASD / FLECHAS  conducir\nESPACIO  freno de mano"
+            : "SELECCION DE CIRCUITO\nTanques o carrera de autos";
+        speedLabel.text = driving ? "VELOCIDAD  " + Mathf.RoundToInt(player.SpeedKph) + " km/h" : "WAYPOINTS  circuito activo";
+        Transform movementButton = transform.Find("LAB06 Race HUD/HUD Panel/Movement Mode");
+        if (movementButton != null)
+        {
+            Button button = movementButton.GetComponent<Button>();
+            if (button != null) button.interactable = carDemo != null && driving;
+            Text caption = FindText(movementButton, "Label");
+            if (caption != null)
+                caption.text = carDemo != null && carDemo.TrackerMode ? "MODO TRACKER" : "MODO WAYPOINTS";
+        }
     }
 
     private void ToggleMovementMode()
     {
-        if (carDemo == null && carSceneMode) carDemo = GetComponent<CarCircuitDemo>();
+        if (carDemo == null) carDemo = FindFirstObjectByType<CarCircuitDemo>();
         if (carDemo != null) carDemo.SetTrackerMode(!carDemo.TrackerMode);
-        UpdateLabels();
+        RefreshLabels();
     }
 
-    private void UpdateLabels()
+    private void Load(string scene)
     {
-        if (sceneLabel == null) return;
-        if (carDemo == null && carSceneMode) carDemo = GetComponent<CarCircuitDemo>();
-        if (vehicles.Length == 0 && !Application.isPlaying)
-            vehicles = GetComponentsInChildren<FollowWP>(true);
-        sceneLabel.text = "Escena actual: " + SceneManager.GetActiveScene().name;
-        vehicleLabel.text = selectedIndex >= 0 && selectedIndex < vehicles.Length
-            ? vehicles[selectedIndex].name : "Vista general  |  " + vehicles.Length + " vehiculos";
-        bool carSceneLoaded = carDemo != null && carDemo.HasScenePreview;
-        modeLabel.text = carSceneLoaded
-            ? (carDemo.TrackerMode ? "Tracker movil activo" : "Waypoints directos activos")
-            : "Ruta cerrada de waypoints";
-        int laps = lapCounter != null && selectedIndex >= 0 && selectedIndex < vehicles.Length
-            ? lapCounter.GetLaps(vehicles[selectedIndex]) : 0;
-        lapLabel.text = carSceneLoaded ? "Vueltas completadas: " + laps : "Selecciona un tanque o auto";
+        if (Application.isPlaying && SceneManager.GetActiveScene().name != scene)
+            SceneManager.LoadScene(scene, LoadSceneMode.Single);
     }
 
-    private void LoadScene(string sceneName)
+    private static Text FindText(Transform parent, string name)
     {
-        if (!Application.isPlaying) return;
-        if (SceneManager.GetActiveScene().name != sceneName)
-            SceneManager.LoadScene(sceneName, LoadSceneMode.Single);
+        Transform found = parent.Find(name);
+        return found == null ? null : found.GetComponent<Text>();
     }
 
-    private static Text CreateLabel(Transform parent, string name, string text, float x, float y,
-        float width, float height, int size, FontStyle fontStyle, Color color, TextAnchor anchor)
+    private static Text CreateText(Transform parent, string name, string value, Vector2 position,
+        Vector2 size, int fontSize, FontStyle style, Color color)
     {
         GameObject obj = new GameObject(name, typeof(RectTransform), typeof(Text));
         obj.transform.SetParent(parent, false);
-        AnchorTopLeft(obj.GetComponent<RectTransform>(), x, y, width, height);
-        Text label = obj.GetComponent<Text>();
-        label.text = text;
-        label.font = Resources.GetBuiltinResource<Font>("Arial.ttf");
-        label.fontSize = size;
-        label.fontStyle = fontStyle;
-        label.color = color;
-        label.alignment = anchor;
-        label.raycastTarget = false;
-        return label;
+        RectTransform rect = obj.GetComponent<RectTransform>();
+        rect.anchorMin = new Vector2(0, 1); rect.anchorMax = new Vector2(0, 1);
+        rect.pivot = new Vector2(0, 1); rect.anchoredPosition = position; rect.sizeDelta = size;
+        Text text = obj.GetComponent<Text>();
+        text.text = value; text.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+        text.fontSize = fontSize; text.fontStyle = style; text.color = color;
+        text.alignment = TextAnchor.MiddleLeft; text.raycastTarget = false;
+        return text;
     }
 
-    private static Button CreateButton(Transform parent, string name, string caption, float x, float y,
-        float width, float height, UnityEngine.Events.UnityAction action)
+    private static Button CreateButton(Transform parent, string name, string caption,
+        Vector2 position, Vector2 size, UnityEngine.Events.UnityAction callback)
     {
         GameObject obj = new GameObject(name, typeof(RectTransform), typeof(Image), typeof(Button));
         obj.transform.SetParent(parent, false);
-        AnchorTopLeft(obj.GetComponent<RectTransform>(), x, y, width, height);
-        Image image = obj.GetComponent<Image>();
-        image.color = new Color(0.07f, 0.31f, 0.37f, 1f);
+        RectTransform rect = obj.GetComponent<RectTransform>();
+        rect.anchorMin = new Vector2(0, 1); rect.anchorMax = new Vector2(0, 1);
+        rect.pivot = new Vector2(0, 1); rect.anchoredPosition = position; rect.sizeDelta = size;
+        Image image = obj.GetComponent<Image>(); image.color = new Color(0.06f, 0.3f, 0.35f, 1);
         Button button = obj.GetComponent<Button>();
         ColorBlock colors = button.colors;
-        colors.normalColor = new Color(0.07f, 0.31f, 0.37f, 1f);
-        colors.highlightedColor = new Color(0.1f, 0.48f, 0.52f, 1f);
-        colors.pressedColor = new Color(0.04f, 0.22f, 0.27f, 1f);
-        colors.selectedColor = colors.highlightedColor;
-        button.colors = colors;
-        GameObject labelObj = new GameObject("Label", typeof(RectTransform), typeof(Text));
-        labelObj.transform.SetParent(obj.transform, false);
-        RectTransform labelRect = labelObj.GetComponent<RectTransform>();
-        labelRect.anchorMin = Vector2.zero; labelRect.anchorMax = Vector2.one;
-        labelRect.offsetMin = Vector2.zero; labelRect.offsetMax = Vector2.zero;
-        Text label = labelObj.GetComponent<Text>();
-        label.text = caption;
-        label.font = Resources.GetBuiltinResource<Font>("Arial.ttf");
-        label.fontSize = 12; label.fontStyle = FontStyle.Bold;
-        label.color = Color.white; label.alignment = TextAnchor.MiddleCenter;
-        button.onClick.AddListener(action);
+        colors.normalColor = image.color;
+        colors.highlightedColor = new Color(0.1f, 0.49f, 0.52f, 1);
+        colors.pressedColor = new Color(0.04f, 0.2f, 0.24f, 1);
+        button.colors = colors; button.onClick.AddListener(callback);
+        CreateText(obj.transform, "Label", caption, Vector2.zero, size, 12, FontStyle.Bold, Color.white)
+            .GetComponent<RectTransform>().anchorMax = Vector2.one;
+        RectTransform label = obj.transform.Find("Label").GetComponent<RectTransform>();
+        label.anchorMin = Vector2.zero; label.anchorMax = Vector2.one;
+        label.pivot = new Vector2(0.5f, 0.5f); label.anchoredPosition = Vector2.zero;
+        label.offsetMin = Vector2.zero; label.offsetMax = Vector2.zero;
+        Text labelText = label.GetComponent<Text>(); labelText.alignment = TextAnchor.MiddleCenter;
+        labelText.fontSize = 11;
         return button;
-    }
-
-    private static void AnchorTopLeft(RectTransform rect, float x, float y, float width, float height)
-    {
-        rect.anchorMin = new Vector2(0f, 1f);
-        rect.anchorMax = new Vector2(0f, 1f);
-        rect.pivot = new Vector2(0f, 1f);
-        rect.anchoredPosition = new Vector2(x, -y);
-        rect.sizeDelta = new Vector2(width, height);
-    }
-
-    private static Text FindLabel(Transform parent, string name)
-    {
-        Transform child = parent.Find(name);
-        return child != null ? child.GetComponent<Text>() : null;
     }
 }

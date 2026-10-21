@@ -6,6 +6,9 @@ EditorBuildSettings:
   serializedVersion: 2
   m_Scenes:
   - enabled: 1
+    path: Assets/Scenes/MainMenu.unity
+    guid: c13c0fb6e4aa4b7bb8cc1f8294ca9832
+  - enabled: 1
     path: Assets/Scenes/TankRacing.unity
     guid: 19c4146ff7514b5ebf0a97d04666b940
   - enabled: 1

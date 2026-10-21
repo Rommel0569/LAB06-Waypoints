@@ -9,6 +9,7 @@ public sealed class FollowWP : MonoBehaviour
     [SerializeField, Min(0.05f)] private float arrivalDistance = 1.25f;
     [SerializeField, Min(0)] private int startingWaypoint = 0;
     [SerializeField] private float laneOffset;
+    [SerializeField, Min(0.2f)] private float cornerSlowdown = 0.72f;
     [SerializeField] private bool drawRoute = true;
 
     private int currentWaypoint;
@@ -71,7 +72,14 @@ public sealed class FollowWP : MonoBehaviour
         if (usePhysics) body.MoveRotation(nextRotation);
         else transform.rotation = nextRotation;
         float alignment = Mathf.Clamp01(Vector3.Dot(transform.forward, direction.normalized));
-        Vector3 nextPosition = transform.position + transform.forward * (moveSpeed * alignment * deltaTime);
+        // Brake before sharp bends instead of taking a straight chord across neighbouring lanes.
+        Vector3 nextDirection = GetWaypointPosition((currentWaypoint + 1) % waypoints.Length) - target;
+        nextDirection.y = 0f;
+        float bend = nextDirection.sqrMagnitude > 0.001f
+            ? Vector3.Angle(direction, nextDirection) / 180f : 0f;
+        float speedFactor = Mathf.Lerp(1f, cornerSlowdown, Mathf.SmoothStep(0f, 0.72f, bend));
+        float steeringFactor = Mathf.InverseLerp(-0.08f, 0.55f, alignment);
+        Vector3 nextPosition = transform.position + transform.forward * (moveSpeed * speedFactor * steeringFactor * deltaTime);
         if (usePhysics) body.MovePosition(nextPosition);
         else transform.position = nextPosition;
         if (usePhysics)

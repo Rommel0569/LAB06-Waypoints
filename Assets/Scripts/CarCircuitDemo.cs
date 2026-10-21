@@ -12,7 +12,6 @@ public sealed class CarCircuitDemo : MonoBehaviour
     [SerializeField] private int carCount = 4;
     [SerializeField, Min(0.1f)] private float trackWidth = 10f;
     [SerializeField]
-
     private List<FollowWP> waypointDrivers = new List<FollowWP>();
     private List<FollowTracker> trackerDrivers = new List<FollowTracker>();
     private CircuitTracker tracker;
@@ -20,6 +19,7 @@ public sealed class CarCircuitDemo : MonoBehaviour
     private Transform generatedRoot;
     private bool buildingPreview;
     private LabNavigationPanel navigationPanel;
+    private PlayerCarController playerCar;
 
     public bool TrackerMode => trackerMode;
 
@@ -97,10 +97,65 @@ public sealed class CarCircuitDemo : MonoBehaviour
         tracker = generatedRoot.GetComponentInChildren<CircuitTracker>(true);
         waypointDrivers = new List<FollowWP>(generatedRoot.GetComponentsInChildren<FollowWP>(true));
         trackerDrivers = new List<FollowTracker>(generatedRoot.GetComponentsInChildren<FollowTracker>(true));
+        playerCar = generatedRoot.GetComponentInChildren<PlayerCarController>(true);
         if (route != null && tracker != null) tracker.Configure(route, 10f, 3.5f);
+        if (route != null) ConfigureExistingRacers(route.Waypoints);
         if (navigationPanel == null) navigationPanel = GetComponent<LabNavigationPanel>();
         if (navigationPanel == null) navigationPanel = gameObject.AddComponent<LabNavigationPanel>();
         if (navigationPanel != null) navigationPanel.ConfigureCarDemo(this);
+        if (Application.isPlaying && playerCar != null)
+        {
+            Camera camera = Camera.main;
+            if (camera != null)
+            {
+                VehicleCameraNavigator navigator = camera.GetComponent<VehicleCameraNavigator>();
+                if (navigator != null) navigator.Focus(playerCar.transform);
+            }
+        }
+    }
+
+    private void ConfigureExistingRacers(Transform[] points)
+    {
+        if (points == null || points.Length < 3) return;
+        string[] names = { "Azure Racer", "Coral Racer", "Sunset Racer", "Palm Racer" };
+        float[] offsets = { -3.45f, -1.15f, 1.15f, 3.45f };
+        float[] speeds = { 7f, 7.4f, 7f, 6.7f };
+        for (int i = 0; i < names.Length; i++)
+        {
+            Transform car = generatedRoot.Find(names[i]);
+            if (car == null) continue;
+            FollowWP waypoint = car.GetComponent<FollowWP>();
+            Rigidbody body = car.GetComponent<Rigidbody>();
+            if (waypoint == null || body == null) continue;
+
+            int startAt = i == 0 ? 0 : (i * points.Length) / 4;
+            int next = (startAt + 1) % points.Length;
+            Vector3 tangent = points[next].position - points[startAt].position;
+            tangent.y = 0f;
+            if (tangent.sqrMagnitude < 0.001f) tangent = Vector3.forward;
+            tangent.Normalize();
+            Vector3 side = new Vector3(-tangent.z, 0f, tangent.x);
+            car.position = points[startAt].position + side * offsets[i] + Vector3.up * 0.05f;
+            car.rotation = Quaternion.LookRotation(tangent, Vector3.up);
+            waypoint.Configure(points, speeds[i], next, offsets[i]);
+
+            FollowTracker follower = car.GetComponent<FollowTracker>();
+            if (follower != null)
+            {
+                follower.Configure(tracker, speeds[i] + 1.2f, 2.2f + i * 2.4f);
+                follower.enabled = false;
+            }
+
+            if (i == 0)
+            {
+                waypoint.enabled = false;
+                if (playerCar == null) playerCar = car.GetComponent<PlayerCarController>();
+                if (playerCar == null) playerCar = car.gameObject.AddComponent<PlayerCarController>();
+                playerCar.Configure(body, car.GetComponentsInChildren<WheelCollider>(true));
+                playerCar.enabled = true;
+            }
+            else waypoint.enabled = true;
+        }
     }
 
     [ContextMenu("Rebuild visible circuit preview")]
@@ -182,11 +237,12 @@ public sealed class CarCircuitDemo : MonoBehaviour
     private void SpawnCars(Transform[] points)
     {
         int count = Mathf.Clamp(carCount, 2, 4);
-        float[] laneOffsets = { -3f, -1f, 1f, 3f };
-        float[] speeds = { 12f, 11f, 12.8f, 11.7f };
+        // Player starts alone at the start line; AI cars keep physical separation at launch.
+        float[] laneOffsets = { -3.45f, -1.15f, 1.15f, 3.45f };
+        float[] speeds = { 0f, 7.4f, 7.0f, 6.7f };
         for (int i = 0; i < count; i++)
         {
-            int startAt = (i * points.Length) / count;
+            int startAt = i == 0 ? 0 : (i * points.Length) / count;
             Vector3 tangent = points[(startAt + 1) % points.Length].position - points[startAt].position;
             tangent.y = 0f;
             Vector3 side = new Vector3(-tangent.normalized.z, 0f, tangent.normalized.x);
@@ -209,11 +265,17 @@ public sealed class CarCircuitDemo : MonoBehaviour
             body.interpolation = RigidbodyInterpolation.Interpolate;
 
             FollowWP waypoint = car.AddComponent<FollowWP>();
-            waypoint.Configure(points, speeds[i], (startAt + 1) % points.Length, laneOffsets[i]);
+            waypoint.Configure(points, i == 0 ? 7f : speeds[i], (startAt + 1) % points.Length, laneOffsets[i]);
+            if (i == 0)
+            {
+                waypoint.enabled = false;
+                playerCar = car.AddComponent<PlayerCarController>();
+                playerCar.Configure(body, wheelColliders: car.GetComponentsInChildren<WheelCollider>());
+            }
             waypointDrivers.Add(waypoint);
 
             FollowTracker follower = car.AddComponent<FollowTracker>();
-            follower.Configure(tracker, speeds[i] + 1.2f, 2.2f + i * 2.4f);
+            follower.Configure(tracker, i == 0 ? 0.1f : speeds[i] + 1.2f, 2.2f + i * 2.4f);
             follower.enabled = false;
             trackerDrivers.Add(follower);
         }
@@ -359,8 +421,17 @@ public sealed class CarCircuitDemo : MonoBehaviour
             tracker.gameObject.SetActive(enabled);
             tracker.enabled = enabled;
         }
-        foreach (FollowWP driver in waypointDrivers) if (driver != null) driver.enabled = !enabled;
-        foreach (FollowTracker driver in trackerDrivers) if (driver != null) driver.enabled = enabled;
+        for (int i = 0; i < waypointDrivers.Count; i++)
+        {
+            FollowWP driver = waypointDrivers[i];
+            if (driver != null) driver.enabled = !enabled && driver.GetComponent<PlayerCarController>() == null;
+        }
+        for (int i = 0; i < trackerDrivers.Count; i++)
+        {
+            FollowTracker driver = trackerDrivers[i];
+            if (driver != null) driver.enabled = enabled && driver.GetComponent<PlayerCarController>() == null;
+        }
+        if (playerCar != null) playerCar.enabled = true;
     }
 
     public void ResetRace()
