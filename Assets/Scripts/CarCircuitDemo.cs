@@ -99,6 +99,7 @@ public sealed class CarCircuitDemo : MonoBehaviour
         trackerDrivers = new List<FollowTracker>(generatedRoot.GetComponentsInChildren<FollowTracker>(true));
         if (route != null && tracker != null) tracker.Configure(route, 10f, 3.5f);
         if (navigationPanel == null) navigationPanel = GetComponent<LabNavigationPanel>();
+        if (navigationPanel == null) navigationPanel = gameObject.AddComponent<LabNavigationPanel>();
         if (navigationPanel != null) navigationPanel.ConfigureCarDemo(this);
     }
 

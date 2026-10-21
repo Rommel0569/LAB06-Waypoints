@@ -37,7 +37,14 @@ public static class CarCircuitScenePreview
             {
                 foreach (GameObject root in scene.GetRootGameObjects())
                     if (root.name == "CostaAzulRaceBootstrap" && root.transform.Find("CAR CIRCUIT PREVIEW") != null)
+                    {
+                        EditorSceneManager.SetActiveScene(scene);
+                        CarCircuitDemo.CreateEditModePreview(root);
+                        if (scene.isDirty) EditorSceneManager.SaveScene(scene);
+                        AssetDatabase.SaveAssets();
+                        FrameCircuit();
                         return;
+                    }
             }
         }
         if (EditorSceneManager.GetActiveScene().isDirty) return;
