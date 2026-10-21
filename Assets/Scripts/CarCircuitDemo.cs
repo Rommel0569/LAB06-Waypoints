@@ -9,8 +9,10 @@ using UnityEngine;
 [ExecuteAlways]
 public sealed class CarCircuitDemo : MonoBehaviour
 {
+    private const int CurrentPreviewVersion = 2;
     [SerializeField] private int carCount = 4;
     [SerializeField, Min(0.1f)] private float trackWidth = 10f;
+    [SerializeField, HideInInspector] private int generatedPreviewVersion;
     [SerializeField]
     private List<FollowWP> waypointDrivers = new List<FollowWP>();
     private List<FollowTracker> trackerDrivers = new List<FollowTracker>();
@@ -77,11 +79,21 @@ public sealed class CarCircuitDemo : MonoBehaviour
     {
         if (buildingPreview) return;
         Transform existing = transform.Find("CAR CIRCUIT PREVIEW");
-        if (existing != null)
+        if (existing != null && generatedPreviewVersion == CurrentPreviewVersion)
         {
             generatedRoot = existing;
             CacheGeneratedObjects();
             return;
+        }
+        if (existing != null)
+        {
+#if UNITY_EDITOR
+            if (!Application.isPlaying) DestroyImmediate(existing.gameObject);
+            else Destroy(existing.gameObject);
+#else
+            Destroy(existing.gameObject);
+#endif
+            generatedRoot = null;
         }
         buildingPreview = true;
         BuildCircuit();
@@ -210,9 +222,9 @@ public sealed class CarCircuitDemo : MonoBehaviour
         CreatePrimitive("Open Pacific", PrimitiveType.Plane, new Vector3(0f, -1.3f, 0f),
             new Vector3(24f, 1f, 18f), water);
         CreatePrimitive("Sandy island", PrimitiveType.Plane, new Vector3(0f, -0.65f, 0f),
-            new Vector3(11f, 1f, 8f), sand);
+            new Vector3(11f, 1f, 8f), sand, true);
         CreatePrimitive("Tropical infield", PrimitiveType.Plane, new Vector3(0f, -0.2f, 0f),
-            new Vector3(8.5f, 1f, 6.2f), grass);
+            new Vector3(8.5f, 1f, 6.2f), grass, true);
 
         List<Vector3> centerline = SampleCircuit(12);
         CreateRibbon("Asphalt circuit", centerline, trackWidth, asphalt, 0.04f);
@@ -251,6 +263,7 @@ public sealed class CarCircuitDemo : MonoBehaviour
         CreateLightingAndCamera();
         CreatePaddock();
         CreateStartGate(centerline, white);
+        generatedPreviewVersion = CurrentPreviewVersion;
         navigationPanel = GetComponent<LabNavigationPanel>();
         if (navigationPanel != null) navigationPanel.ConfigureCarDemo(this);
         activeBuildRoot = null;
@@ -374,13 +387,22 @@ public sealed class CarCircuitDemo : MonoBehaviour
 
     private void AddPalmGroves(Material grass)
     {
-        for (int i = 0; i < 14; i++)
+        // Keep trees behind the safety zone so neither trunks nor canopies intrude
+        // into the racing surface. The paddock and grandstand get their own clear bays.
+        Vector3[] positions =
         {
-            float angle = i * Mathf.PI * 2f / 14f;
-            Vector3 basePoint = new Vector3(Mathf.Cos(angle) * 42f, 0f, Mathf.Sin(angle) * 32f);
+            new Vector3(47f, 0f, -30f), new Vector3(47f, 0f, -22f),
+            new Vector3(47f, 0f, -14f), new Vector3(47f, 0f, 14f),
+            new Vector3(47f, 0f, 22f), new Vector3(47f, 0f, 30f),
+            new Vector3(-47f, 0f, 20f), new Vector3(-47f, 0f, 32f)
+        };
+        for (int i = 0; i < positions.Length; i++)
+        {
+            float angle = i * 137.5f * Mathf.Deg2Rad;
+            Vector3 basePoint = positions[i];
             GameObject trunk = CreatePrimitive("Palm trunk", PrimitiveType.Cylinder,
                 basePoint + Vector3.up * 2f, new Vector3(0.48f, 2f, 0.48f),
-                MakeMaterial("Palm bark", new Color(0.35f, 0.22f, 0.1f)));
+                MakeMaterial("Palm bark", new Color(0.35f, 0.22f, 0.1f)), true);
             trunk.transform.rotation = Quaternion.Euler(0f, angle * Mathf.Rad2Deg, 0f);
             Vector3 crown = basePoint + Vector3.up * 4.15f;
             CreatePrimitive("Palm heart", PrimitiveType.Sphere, crown, new Vector3(0.65f, 0.5f, 0.65f),
@@ -666,20 +688,22 @@ public sealed class CarCircuitDemo : MonoBehaviour
         Material stand = MakeMaterial("Grandstand seats", new Color(0.82f, 0.27f, 0.08f));
         for (int bay = 0; bay < 4; bay++)
         {
-            Vector3 p = new Vector3(-8f + bay * 4f, 1.1f, -34f);
+            // Put the pit complex on the west beach, clear of the start straight.
+            Vector3 p = new Vector3(-47f, 1.1f, -28f + bay * 4.2f);
             CreatePrimitive("Pit garage bay " + (bay + 1), PrimitiveType.Cube, p,
-                new Vector3(3.8f, 2.2f, 5f), wall);
+                new Vector3(5f, 2.2f, 3.8f), wall, true);
             CreatePrimitive("Pit garage roof " + (bay + 1), PrimitiveType.Cube,
-                p + Vector3.up * 1.3f, new Vector3(4.1f, 0.35f, 5.3f), roof);
+                p + Vector3.up * 1.3f, new Vector3(5.3f, 0.35f, 4.1f), roof, true);
         }
         for (int row = 0; row < 4; row++)
         {
-            Vector3 p = new Vector3(27f, 0.6f + row * 0.72f, 0f);
+            // The outside of the east beach keeps the full right-hand bend open.
+            Vector3 p = new Vector3(48f, 0.6f + row * 0.72f, 0f);
             CreatePrimitive("Spectator grandstand row " + (row + 1), PrimitiveType.Cube,
-                p, new Vector3(5f, 0.48f, 17f - row * 1.5f), stand);
+                p, new Vector3(5f, 0.48f, 17f - row * 1.5f), stand, true);
         }
         CreatePrimitive("Tropical circuit sign", PrimitiveType.Cube,
-            new Vector3(0f, 3.5f, -34f), new Vector3(13f, 2.1f, 0.45f), roof);
+            new Vector3(-47f, 3.5f, 5f), new Vector3(0.45f, 2.1f, 15f), roof, true);
     }
 
     private void CreateStartGate(List<Vector3> path, Material material)

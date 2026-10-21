@@ -79,14 +79,10 @@ public sealed class FollowWP : MonoBehaviour
             ? Vector3.Angle(direction, nextDirection) / 180f : 0f;
         float speedFactor = Mathf.Lerp(1f, cornerSlowdown, Mathf.SmoothStep(0f, 0.72f, bend));
         float steeringFactor = Mathf.InverseLerp(-0.08f, 0.55f, alignment);
+        // Motion stays on the authored Y plane so tanks remain on the floor collider.
         Vector3 nextPosition = transform.position + transform.forward * (moveSpeed * speedFactor * steeringFactor * deltaTime);
         if (usePhysics) body.MovePosition(nextPosition);
         else transform.position = nextPosition;
-        if (usePhysics)
-        {
-            Vector3 position = body.position;
-            body.position = new Vector3(position.x, 0.05f, position.z);
-        }
     }
 
     private Vector3 GetWaypointPosition(int index)
