@@ -1,6 +1,7 @@
 using System;
 using UnityEngine;
 using UnityEngine.EventSystems;
+using UnityEngine.InputSystem;
 using UnityEngine.SceneManagement;
 using UnityEngine.UI;
 
@@ -13,6 +14,7 @@ public sealed class MainMenuController : MonoBehaviour
     private Canvas canvas;
     private int lastWidth;
     private int lastHeight;
+    private bool sceneLoadRequested;
 
     private void OnEnable()
     {
@@ -33,8 +35,27 @@ public sealed class MainMenuController : MonoBehaviour
 
     private void Update()
     {
-        if (!Application.isPlaying || (lastWidth == Screen.width && lastHeight == Screen.height)) return;
-        ApplyResponsiveLayout();
+        if (!Application.isPlaying) return;
+
+        // Keep menu selection reliable even if an EventSystem input module is missing
+        // or misconfigured in the editor scene. The visual UI buttons remain in place.
+        Mouse mouse = Mouse.current;
+        if (!sceneLoadRequested && mouse != null && mouse.leftButton.wasPressedThisFrame)
+        {
+            Vector2 pointer = mouse.position.ReadValue();
+            if (PointerInside("Tank Mode Card", pointer)) { Load(tankScene); return; }
+            if (PointerInside("Car Mode Card", pointer)) { Load(carScene); return; }
+        }
+
+        if (lastWidth != Screen.width || lastHeight != Screen.height)
+            ApplyResponsiveLayout();
+    }
+
+    private bool PointerInside(string path, Vector2 screenPosition)
+    {
+        Transform item = transform.Find("Main Menu Canvas/" + path);
+        RectTransform rect = item == null ? null : item.GetComponent<RectTransform>();
+        return rect != null && RectTransformUtility.RectangleContainsScreenPoint(rect, screenPosition, null);
     }
 
     private void BindButton(string path, string scene)
@@ -274,7 +295,14 @@ public sealed class MainMenuController : MonoBehaviour
 
     private void Load(string scene)
     {
-        if (Application.isPlaying) SceneManager.LoadScene(scene, LoadSceneMode.Single);
+        if (!Application.isPlaying || sceneLoadRequested) return;
+        if (!Application.CanStreamedLevelBeLoaded(scene))
+        {
+            Debug.LogError("No se puede abrir el nivel '" + scene + "'. Verifica que este incluido en Build Settings.", this);
+            return;
+        }
+        sceneLoadRequested = true;
+        SceneManager.LoadScene(scene, LoadSceneMode.Single);
     }
 
     private static void CreateCard(Transform parent, string name, string title, string description,
